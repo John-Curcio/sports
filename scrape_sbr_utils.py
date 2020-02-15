@@ -47,7 +47,10 @@ class GameData(object):
                "MLB",
                "NBA",
                "NCAAB",
-               "NHL"]
+               "NHL",
+               "MLS",
+               "UCL"
+               ]
 
     def __init__(self, league, game_soup, soup_index, date=None):
         """
@@ -62,12 +65,14 @@ class GameData(object):
         self.date = date
         # Setting team names and scores
         team_names = game_soup.find_all("span", class_="team-name")
-        if len(team_names) <= 0:
+        if len(team_names) <= 1:
             raise MissingGame(soup_index)
         # ought to have some way of checking whether things are just completely blank
         # TODO 99% sure this is the right logic for who's home and who's away
-        self.home_team = clean_team_name(team_names[1].text)
-        self.away_team = clean_team_name(team_names[0].text)
+        self.home_team = team_names[1].text
+        self.away_team = team_names[0].text
+        # self.home_team = clean_team_name(team_names[1].text)
+        # self.away_team = clean_team_name(team_names[0].text)
         team_scores = game_soup.find_all("span",
                                          class_="current-score")  # this seems like a better way to go about it.
         self.home_score = team_scores[1].text
@@ -184,6 +189,7 @@ class DateData(object):
                     game_data.update_market_money_lines(league_money_line_soup)
                     self.game_data_list.append(game_data)
                 except MissingGame:
+                    #print(MissingGame)
                     continue
 
     def get_league_game_data(self, league):
