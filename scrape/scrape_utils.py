@@ -1,4 +1,5 @@
 from selenium import webdriver
+from selenium.webdriver.firefox.options import Options
 import re
 from bs4 import BeautifulSoup
 
@@ -26,6 +27,8 @@ class NonClassicGameData(GameData):
     def parse_game(self):
         # print(self.game_soup.prettify())
         team_names = self.game_soup.find_all("span", {"class": re.compile(r"^participantBox")})
+        if len(team_names) <= 1:
+            raise MissingGame(self.league, self.bet_type, self.date, classic=False)
         self.team_A = team_names[0].text
         self.team_B = team_names[1].text
         # print(self.team_A, self.team_B)
@@ -63,8 +66,9 @@ class NonClassicLeagueData(LeagueData):
     """
     Takes in a webpage for all games on a given date, gives you a collection of GameDatas
     """
-    
-    def get_empty_df(self):
+
+    @staticmethod
+    def get_empty_df():
         columns = ["date", "team_A", "team_B", "score_A", "score_B", 
                 "wager_A", "wager_B", "opener_A", "opener_B", "bet_type"]
         return pd.DataFrame(columns=columns)
@@ -78,7 +82,11 @@ class NonClassicLeagueData(LeagueData):
         for row_soup in row_soups:
             game = NonClassicGameData(league=self.league, game_soup=row_soup, 
                                       bet_type=self.bet_type, date=self.date)
-            results.append(game.parse_game())
+            try:
+                results.append(game.parse_game())
+            except MissingGame:
+                print(MissingGame)
+                continue
         if len(results) == 0:
             return self.get_empty_df()
         return pd.DataFrame(results)
@@ -101,7 +109,7 @@ class ClassicGameData(GameData):
     def parse_game(self):
         team_names = self.game_soup.find_all("span", class_="team-name")
         if len(team_names) <= 1:
-            print("missing game: {} {} {}".format(self.league, self.bet_type, self.date))
+            raise MissingGame(self.league, self.bet_type, self.date, classic=True)
         # TODO 99% sure this is the right logic for who's home and who's away
         self.team_A = team_names[0].text # looks like away team
         self.team_B = team_names[1].text # looks like home team
@@ -133,11 +141,6 @@ class ClassicGameData(GameData):
 
 class ClassicLeagueData(LeagueData):
     
-    def get_empty_df(self):
-        columns = ["date", "team_A", "team_B", "bet365_A", "bet365_B", "888sport_A", 
-                   "888sport_B", "unibet_A", "unibet_B", "betway_A", "betway_B", "bet_type"]
-        return pd.DataFrame(columns=columns)
-    
     def parse_all_games(self):
         results = []
         curr_league = None
@@ -147,10 +150,20 @@ class ClassicLeagueData(LeagueData):
                                            class_="event-holder holder-complete"):  # finished games
             game = ClassicGameData(league=self.league, game_soup=row_soup, 
                                    bet_type=self.bet_type, date=self.date)
-            results.append(game.parse_game())
+            try:
+                results.append(game.parse_game())
+            except MissingGame:
+                print(MissingGame)
+                continue
         if len(results) == 0:
             return self.get_empty_df()
         return pd.DataFrame(results)
+
+    @staticmethod
+    def get_empty_df():
+        columns = ["date", "team_A", "team_B", "bet365_A", "bet365_B", "888sport_A", 
+                   "888sport_B", "unibet_A", "unibet_B", "betway_A", "betway_B", "bet_type"]
+        return pd.DataFrame(columns=columns)
     
 #######################################
 # Putting it all together
@@ -158,13 +171,23 @@ class ClassicLeagueData(LeagueData):
 
 class Scraper(object):
 
-    def __init__(self, start_date, end_date, league, bet_types=["pointspread"], max_tries=5):
+    def __init__(self, start_date, end_date, league, bet_types=["pointspread"], 
+                max_tries=5, driver="firefox"):
         self.start_date = start_date
         self.end_date = end_date
         self.league = league
         self.bet_types = bet_types
         self.max_tries = max_tries
-        self.driver = webdriver.Firefox()
+
+        if driver.lower().strip() == "phantomjs":
+            self.driver = webdriver.PhantomJS()
+            self.driver.set_window_size(1120, 550)
+        elif driver.lower().strip() == "firefox":
+            options = Options()
+            options.headless = True
+            self.driver = webdriver.Firefox(options=options)
+        else:
+            assert False, driver
         self.data = []
         
     def get_league_date_url(self, datetime, bet_type, classic):
@@ -178,6 +201,7 @@ class Scraper(object):
     def get_league_date_page(self, datetime, bet_type, classic=False):
         url = self.get_league_date_url(datetime, bet_type, classic)
         print(url)
+        self.driver.implicitly_wait(2) # seconds
         self.driver.get(url)
         html = self.driver.page_source
         soup = BeautifulSoup(html, features="lxml")
@@ -214,7 +238,7 @@ class Scraper(object):
         classic_df = self._scrape_info_helper(datetime, bet_type, True)
         # display(nonclassic_df.head())
         # display(classic_df.head())
-        return classic_df.merge(nonclassic_df, on=["date", "team_A", "team_B"])
+        return classic_df.merge(nonclassic_df, on=["date", "team_A", "team_B", "bet_type"], how="outer")
     
     def run_scraper(self):
         league_results = []
@@ -223,6 +247,4 @@ class Scraper(object):
                 print(datetime, bet_type)
                 curr_df = self.scrape_info(datetime, bet_type)
                 league_results.append(curr_df)
-        display(league_results[0].head())
-        display(league_results[-1].head())
         return pd.concat(league_results)
