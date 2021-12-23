@@ -1,22 +1,36 @@
 from scrape_utils import Scraper
+import argparse
 import pandas as pd
-# import sys
 
 if __name__ == "__main__":
-    ### idk one of these days i can give this thing some command line arguments
-    # print(f"Arguments count: {len(sys.argv)}")
-    # for i, arg in enumerate(sys.argv):
-    #     print(f"Argument {i:>6}: {arg}")
+    parser = argparse.ArgumentParser(description="For scraping from sportsbookreview.com")
 
-    # league = "nfl-football"
-    league = "nba-basketball"
-    bet_types = ["pointspread", "money-line"]
-    start_date = "2021-01-01"
-    # end_date = "2010-01-07"
-    end_date = "2021-12-20"
+    parser.add_argument("start_date", type=str, help="Start date to scrape")
+    parser.add_argument("end_date", type=str, help="Final date to scrape")
+    parser.add_argument("-league", "-L", type=str, default='nba-basketball', 
+        help="all games in given league will be scraped")
 
-    print("Scraping {} for {} from {} to {}".format(bet_types, league, start_date, end_date))
-    S = Scraper(start_date, end_date, league, bet_types, max_tries=8, driver="firefox")
+    parser.add_argument("-bet_types", "-B", nargs="+", type=str, 
+        default=['pointspread', 'money-line'], help="Types of bets (optional, default is 'pointspread')")
+
+    args = parser.parse_args()
+
+    start_date = args.start_date
+    end_date = args.end_date
+    league = args.league
+    bet_types = args.bet_types
+
+    print("Scraping bet_types={} for league={} from {} to {}".format(bet_types, league, start_date, end_date))
+    
+    if pd.to_datetime(start_date) > pd.to_datetime(end_date):
+        raise Exception("(start_date={}) > (end_date={})".format(start_date, end_date))
+
+    valid_bet_types = ["pointspread", "money-line", "totals", "merged"]
+
+    if not all([b in valid_bet_types for b in bet_types]):
+        raise Exception("invalid bet type in {}. must be in {}".format(bet_types, valid_bet_types))
+
+    S = Scraper(start_date, end_date, league, bet_types, max_tries=3, driver="firefox")
     league_df = S.run_scraper()
     S.close_driver()
     print(league_df.isnull().mean())
@@ -24,6 +38,4 @@ if __name__ == "__main__":
     path = "scraped_data/{league}_{start}_{end}.csv".format(
         league=league, start=start_date, end=end_date
     )
-    league_df.to_csv(path)
-
-    
+    league_df.to_csv(path, index=False)
