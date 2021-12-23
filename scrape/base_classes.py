@@ -18,7 +18,7 @@ class MissingGame(Exception):
         self.date = date 
         self.classic = classic
 
-    def __str__(self):
+    def __repr__(self):
         classic_str = "classic" if classic else "nonclassic"
         return "Missing Game: {} {} {} {}".format(
             self.league, self.bet_type, self.date, classic_str,
