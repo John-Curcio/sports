@@ -30,7 +30,7 @@ if __name__ == "__main__":
     if not all([b in valid_bet_types for b in bet_types]):
         raise Exception("invalid bet type in {}. must be in {}".format(bet_types, valid_bet_types))
 
-    S = Scraper(start_date, end_date, league, bet_types, max_tries=3, driver="firefox")
+    S = Scraper(start_date, end_date, league, bet_types, max_tries=1, driver="firefox")
     league_df = S.run_scraper()
     S.close_driver()
     print(league_df.isnull().mean())
