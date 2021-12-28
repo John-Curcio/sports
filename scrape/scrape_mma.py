@@ -131,6 +131,7 @@ class FighterSearchScraper(BaseScraper):
         self.stats_df = None
         self.bio_df = None
         self.matches_df = None
+        self.urls = None
         
     def get_fighter_urls(self, search_url):
         self.driver.get(search_url)
@@ -141,11 +142,11 @@ class FighterSearchScraper(BaseScraper):
         for link in table_body.find_all("a", href=True):
             fighter_urls.append("https://espn.com" + link["href"])
         return fighter_urls
-    
-    def scrape_fighters(self):
-        curr_n_pages = 0
+
+    def get_urls(self):
+        if self.urls is not None:
+            return self.urls
         fighter_urls = []
-        fighters = []
         base_url = "http://www.espn.com/mma/fighters?search="
         for letter in [chr(x) for x in range(ord("a"), ord("z")+1)]:
             curr_url = base_url + letter
@@ -153,6 +154,12 @@ class FighterSearchScraper(BaseScraper):
             curr_n_pages += 1
             if curr_n_pages >= self.n_pages or len(fighter_urls) >= self.n_fighters:
                 break
+        return fighter_urls
+
+    
+    def scrape_fighters(self):
+        curr_n_pages = 0
+        fighter_urls = self.get_urls()
         fighters = []
         for i in range(min(self.n_fighters, len(fighter_urls))):
             fighter_url = fighter_urls[i]
@@ -188,14 +195,14 @@ class FighterSearchScraper(BaseScraper):
         self.matches_df = pd.concat(matches_list)
 
 
-            
-foo = FighterSearchScraper()
-foo.run_scraper(True)
-print(foo.bio_df.head())
-print(foo.stats_df.head())
-print(foo.matches_df.head())
+if __name__ == "__main__":            
+    foo = FighterSearchScraper()
+    foo.run_scraper(True)
+    print(foo.bio_df.head())
+    print(foo.stats_df.head())
+    print(foo.matches_df.head())
 
-mma_dir = "scraped_data{}mma{}".format(os.sep, os.sep)
-foo.stats_df.to_csv(mma_dir+"fighter_stats.csv", index=False)
-foo.bio_df.to_csv(mma_dir+"fighter_bios.csv", index=False)
-foo.matches_df.to_csv(mma_dir+"matches.csv", index=False) # I guess this will be double-counting but W/E
+    mma_dir = "scraped_data{}mma{}".format(os.sep, os.sep)
+    foo.stats_df.to_csv(mma_dir+"missing_fighter_stats_df.csv", index=False)
+    foo.bio_df.to_csv(mma_dir+"missing_fighter_bio_df.csv", index=False)
+    foo.matches_df.to_csv(mma_dir+"missing_matches_df.csv", index=False) # I guess this will be double-counting but W/E
