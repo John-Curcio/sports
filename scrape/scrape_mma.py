@@ -196,13 +196,8 @@ class FighterSearchScraper(BaseScraper):
 
 
 if __name__ == "__main__":            
-    foo = FighterSearchScraper()
+    foo = FighterSearchScraper(n_fighters=25)
     foo.run_scraper(True)
     print(foo.bio_df.head())
     print(foo.stats_df.head())
     print(foo.matches_df.head())
-
-    mma_dir = "scraped_data{}mma{}".format(os.sep, os.sep)
-    foo.stats_df.to_csv(mma_dir+"missing_fighter_stats_df.csv", index=False)
-    foo.bio_df.to_csv(mma_dir+"missing_fighter_bio_df.csv", index=False)
-    foo.matches_df.to_csv(mma_dir+"missing_matches_df.csv", index=False) # I guess this will be double-counting but W/E
