@@ -123,12 +123,14 @@ class NonClassicLeagueData(LeagueData):
 class Scraper(object):
 
     def __init__(self, start_date, end_date, league, bet_types=["pointspread"], 
-                max_tries=5, driver="firefox"):
+                max_tries=5, driver="firefox", no_events_timeout=6, odds_timeout=30):
         self.start_date = start_date
         self.end_date = end_date
         self.league = league
         self.bet_types = bet_types
         self.max_tries = max_tries
+        self.no_events_timeout = no_events_timeout
+        self.odds_timeout = odds_timeout
 
         if driver.lower().strip() == "phantomjs":
             self.driver = webdriver.PhantomJS()
@@ -137,7 +139,6 @@ class Scraper(object):
             options = Options()
             options.headless = True
             self.driver = webdriver.Firefox(options=options)
-            self.driver = webdriver.Firefox()
         else:
             assert False, driver
         self.data = []
@@ -156,7 +157,7 @@ class Scraper(object):
         self.driver.get(url)
         try:
             # check for whether no games occured on this date
-            content = WebDriverWait(self.driver, 4).until(
+            content = WebDriverWait(self.driver, self.no_events_timeout).until(
                 EC.presence_of_element_located((By.CLASS_NAME, "noEvents-1qOEP")) 
                 # wish i could figure out a better element to track
             )
@@ -164,7 +165,7 @@ class Scraper(object):
         except:
             try:
                 # okay there's some content here, there was a game
-                content = WebDriverWait(self.driver, 30).until(
+                content = WebDriverWait(self.driver, self.odds_timeout).until(
                     EC.presence_of_element_located((By.CLASS_NAME, "oddsNumber-3fE_m")) 
                     # again, wish i could figure out a better element to track
                 )
