@@ -1,5 +1,4 @@
-from selenium import webdriver
-from selenium.webdriver.firefox.options import Options
+# aws-sam-cli-managed-default-samclisourcebucket-135j2mihh9lxf
 import re
 from bs4 import BeautifulSoup
 
@@ -8,22 +7,19 @@ import pandas as pd
 import numpy as np
 import os
 
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait # available since 2.4.0
-from selenium.webdriver.support import expected_conditions as EC # available since 2.26.0
-from selenium.common.exceptions import NoSuchElementException, TimeoutException
-import threading, queue
+import requests
+from io import StringIO 
+from lxml import html
 
-class BaseScraper(object):
-    
-#     options = Options()
-#     options.headless = True
-#     driver = webdriver.Firefox(options=options)
-    driver = webdriver.Firefox()
+import boto3
+
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/46.0.2490.80 Safari/537.36',
+    'Content-Type': 'text/html',
+}
 
 
-class Fighter(BaseScraper):
+class Fighter(object):
     
     def __init__(self, url):
         self.base_url = url 
@@ -42,10 +38,10 @@ class Fighter(BaseScraper):
     def get_soup(self, soup_type):
         assert soup_type in ["stats", "history", "bio"], soup_type
         soup_url = "https://www.espn.com/mma/fighter/{}/_/id/{}".format(soup_type, self.fighter_id)
-        self.driver.get(soup_url)
-        html = self.driver.page_source
-#         self.driver.close()
-        return BeautifulSoup(html, features="lxml")
+        
+        r = requests.get(soup_url, headers=headers)
+        html = r.text
+        return BeautifulSoup(html)
 
     def scrape_stats(self):
         # get match statistics, like takedown accuracy or advance to mount or whatever
@@ -77,6 +73,12 @@ class Fighter(BaseScraper):
         # get record of all matches that this fighter has been in
         match_soup = self.get_soup("history")
         self.match_df = self._scrape_table(match_soup)
+        # TODO get opponent IDs here, join with match_df
+        row_tags = match_soup.find_all("tr", {"class": "Table__TR Table__TR--sm Table__even"})
+        opponent_ids = [row_tag.find("a", href=True)["href"] for row_tag in row_tags]
+        self.match_df["OpponentIDs"] = opponent_ids
+        # for link in table_body.find_all("a", href=True):
+        #     fighter_urls.append("https://espn.com" + link["href"])
         return self.match_df
     
     def scrape_bio(self):
@@ -106,98 +108,103 @@ class Fighter(BaseScraper):
             "association": self.association,
         } 
 
-    ### useful for checking whether we've already scraped data for this fighter
-    def __key__(self):
-        return self.base_url
 
-    def __hash__(self):
-        return hash(self.__key__())
+class FighterSearchScraper(object):
 
-    def __eq__(self, other):
-        if isinstance(other, Fighter):
-            return self.__key__() == other.__key__()
-        return NotImplemented    
-    
-    def __repr__(self):
-        return self.base_url
-
-
-class FighterSearchScraper(BaseScraper):
-
-    def __init__(self, n_fighters=np.inf, n_pages=np.inf):
+    def __init__(self, n_fighters=np.inf, n_pages=np.inf, start_letter="a", end_letter="z"):
         self.n_fighters = n_fighters
         self.n_pages = n_pages
         self.fighters = None
         self.stats_df = None
         self.bio_df = None
         self.matches_df = None
-        self.urls = None
+        self.start_letter = start_letter.lower()
+        self.end_letter = end_letter.lower()
         
     def get_fighter_urls(self, search_url):
-        self.driver.get(search_url)
-        html = self.driver.page_source
-        curr_soup = BeautifulSoup(html, features="lxml")
-        table_body = curr_soup.find("tbody")
+        r = requests.get(search_url, headers=headers)
+        html = r.text
+        curr_soup = BeautifulSoup(html)
+        # table_body = curr_soup.find("tbody") # no idea why this works with selenium and not requests!!
+        table_body = curr_soup.find("table", {"class": "tablehead"})
         fighter_urls = []
         for link in table_body.find_all("a", href=True):
             fighter_urls.append("https://espn.com" + link["href"])
         return fighter_urls
-
-    def get_urls(self):
-        if self.urls is not None:
-            return self.urls
+    
+    def scrape_fighters(self):
+        curr_n_pages = 0
         fighter_urls = []
+        fighters = []
         base_url = "http://www.espn.com/mma/fighters?search="
-        for letter in [chr(x) for x in range(ord("a"), ord("z")+1)]:
+        missed_fighters = []
+        for letter in [chr(x) for x in range(ord(self.start_letter), ord(self.end_letter)+1)]:
             curr_url = base_url + letter
             fighter_urls.extend(self.get_fighter_urls(curr_url))
             curr_n_pages += 1
             if curr_n_pages >= self.n_pages or len(fighter_urls) >= self.n_fighters:
                 break
-        return fighter_urls
-
-    
-    def scrape_fighters(self):
-        curr_n_pages = 0
-        fighter_urls = self.get_urls()
         fighters = []
         for i in range(min(self.n_fighters, len(fighter_urls))):
             fighter_url = fighter_urls[i]
             fighters.append(Fighter(fighter_url))
         return fighters
     
-    def run_scraper(self, verbose=True):
+    def run_scraper(self, verbose=True, bio=True, stats=True, matches=True):
         fighters = self.scrape_fighters()
         self.fighters = fighters
         stats_list = []
         bio_list = []
         matches_list = []
+        missed_fighters = []
         if not verbose:
             fighters = tqdm(fighters)
         for fighter in fighters:
             if verbose:
                 print(fighter.base_url)
             # update bio_df, stats_df, and matches_df
-            curr_bio_df = fighter.scrape_bio()
-            curr_bio_df["FighterID"] = fighter.fighter_id
-            bio_list.append(curr_bio_df)
-            
-            curr_stats_df = fighter.scrape_stats()
-            curr_stats_df["FighterID"] = fighter.fighter_id
-            stats_list.append(curr_stats_df)
-            
-            curr_matches_df = fighter.scrape_matches()
-            curr_matches_df["FighterID"] = fighter.fighter_id
-            matches_list.append(curr_matches_df)
-            
-        self.stats_df = pd.concat(stats_list)
-        self.bio_df = pd.concat(bio_list) 
-        self.matches_df = pd.concat(matches_list)
+            try:
+                if bio:
+                    curr_bio_df = fighter.scrape_bio()
+                    curr_bio_df["FighterID"] = fighter.fighter_id
+                    bio_list.append(curr_bio_df)
+                if stats:
+                    curr_stats_df = fighter.scrape_stats()
+                    curr_stats_df["FighterID"] = fighter.fighter_id
+                    stats_list.append(curr_stats_df)
+                if matches:
+                    curr_matches_df = fighter.scrape_matches()
+                    curr_matches_df["FighterID"] = fighter.fighter_id
+                    matches_list.append(curr_matches_df)
+            except:
+                missed_fighters.append(fighter.base_url)
+        if stats:
+            self.stats_df = pd.concat(stats_list)
+        if bio:
+            self.bio_df = pd.concat(bio_list) 
+        if matches:
+            self.matches_df = pd.concat(matches_list)
+        self.missed_fighters = pd.DataFrame({"fighter_url": missed_fighters})
 
+if __name__ == "__main__":
+    
+    # for start_letter, end_letter in [("a", "h"), ("i", "q"), ("r", "z")]:
+    all_letters = [chr(i) for i in range(ord("a"), ord("z")+1)]
+    for start_letter, end_letter in zip(all_letters, all_letters):
+        foo = FighterSearchScraper(start_letter=start_letter, end_letter=end_letter)
+        foo.run_scraper(bio=False, stats=False)
+        # print(foo.bio_df.head())
+        # print(foo.stats_df.head())
+        print(foo.matches_df.head())
+        
+        foo.matches_df.to_csv("raw_data/{}_{}_matches_df.csv".format(start_letter, end_letter), index=False)
+        
+        # bucket = "sports-bucket-871962086sneed" # pleeeeeease work
+        # bucket = 'aws-sam-cli-managed-default-samclisourcebucket-135j2mihh9lxf' # already created on S3
+        # dfs = [foo.bio_df, foo.matches_df, foo.stats_df, foo.missed_fighters]
+        # df_names = ["raw_data/{}_{}_{}.csv".format(start_letter, end_letter, x) 
+        #             for x in ["bio_df", "matches_df", "stats_df", "missed_fighters"]]
+        # for df, df_name in zip(dfs, df_names):
+        #     df.to_csv(df_name, index=False)
+        print("done with fighters in letter range {}-{}".format(start_letter, end_letter))
 
-if __name__ == "__main__":            
-    foo = FighterSearchScraper(n_fighters=25)
-    foo.run_scraper(True)
-    print(foo.bio_df.head())
-    print(foo.stats_df.head())
-    print(foo.matches_df.head())
