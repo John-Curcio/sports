@@ -59,8 +59,8 @@ class DataCleaner(object):
         # note that we don't have to swap socre_A & score_B, opener_A & opener_B, etc
         clean_ml_df["FighterID"] = clean_ml_df["FighterID"].fillna(ml_df2["OpponentID"])
         clean_ml_df["OpponentID"] = clean_ml_df["OpponentID"].fillna(ml_df2["FighterID"])
-        ml_df2["Res."] = ml_df2["Res."].replace({"W": "L", "L": "W"})
-        for col in ["Res.", "Decision", "Rnd", "Time", "Event"]:
+        ml_df2["FighterResult"] = ml_df2["FighterResult"].replace({"W": "L", "L": "W"})
+        for col in ["FighterResult", "Decision", "Rnd", "Time", "Event"]:
             clean_ml_df[col] = clean_ml_df[col].fillna(ml_df2[col])
         ## This should leave about 149 FighterID, OpponentIDs unaccounted for. Almost all of these fights 
         # appear to simply have been cancelled. 
@@ -99,12 +99,15 @@ class DataCleaner(object):
 
         clean_stats_df = stats_df0.merge(bio_df[["FighterID", "Name"]], on="FighterID", how="left")
         clean_stats_df["Date"] = pd.to_datetime(clean_stats_df["Date"])
+        clean_stats_df = clean_stats_df.rename(columns={"Res.": "FighterResult"})
 
         self.clean_stats_df = clean_stats_df
         return clean_stats_df
 
     def _parse_bios(self):
         bio_df0 = self.bio_df.copy()
+        bio_df0["Name"] = bio_df0["Name"].str.strip().str.lower()
+
         bio_df0["ReachInches"] = bio_df0["Reach"].fillna('"').str[:-1]
         bio_df0["ReachInches"] = bio_df0["ReachInches"].replace("", np.nan).astype(float)
 
@@ -152,7 +155,9 @@ class DataCleaner(object):
         # the first row will have fewer null columns, and should be kept
         loc_inds = match_df0.isnull().sum(1).sort_values(ascending=True).index # fewer nulls towards the top
         clean_match_df = match_df0.loc[loc_inds].drop_duplicates(["Date", "FighterID", "OpponentID"])
+        # final formatting stuff
         clean_match_df["Date"] = pd.to_datetime(clean_match_df["Date"])
+        clean_match_df = clean_match_df.rename(columns={"Res.": "FighterResult"})
         self.clean_match_df = clean_match_df
         return clean_match_df
 
