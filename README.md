@@ -21,3 +21,5 @@ Some tasks we'll have to do along the way:
 * When a fight goes to a decision, who's declared the winner at the end?
 * What's a given fighter's weakness? 
 * How good is Elo alone? How good is ignoring fighter identity and just comparing reach/weight?
+
+Rocus3 branch add
