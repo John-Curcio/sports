@@ -17,6 +17,7 @@ class DataCleaner(object):
         self.clean_stats_df = None 
         self.clean_bio_df = None 
         self.clean_match_df = None 
+        self.ml_stats_df = None
 
     @staticmethod
     def get_implied_opener_prob(moneyline):
@@ -161,11 +162,27 @@ class DataCleaner(object):
         self.clean_match_df = clean_match_df
         return clean_match_df
 
+    def _join_ml_and_stats(self):
+        stats_df = self.clean_stats_df.rename(columns={"Opponent": "OpponentName"})
+        ml_df = self.ml_df.copy()
+        stats_df["OpponentName"] = stats_df["OpponentName"].str.strip().str.lower()
+
+        temp_stats_df = stats_df.drop(columns=["Event", "FighterResult", "Name"])
+        full_df0 = ml_df.merge(temp_stats_df, on=["FighterID", "OpponentName", "Date"], 
+                            how="left")
+        temp_stats_df = temp_stats_df.rename(columns={"FighterID": "OpponentID", 
+                                                    "OpponentName": "FighterName"})
+        full_df = full_df0.merge(temp_stats_df, on=["FighterName", "OpponentID", "Date"], 
+                            how="left", suffixes=("_Fighter", "_Opponent"))
+        self.ml_stats_df = full_df
+        return self.ml_stats_df
+
     def parse_all(self):
         self._parse_bios()
         self._parse_stats()
         self._parse_matches()
         self._parse_moneylines()
+        self._join_ml_and_stats()
 
 if __name__ == "__main__":
     odds_path = "scrape/scraped_data/concated-ufc_2017-04-08_2021-12-20.csv"
@@ -179,5 +196,7 @@ if __name__ == "__main__":
     DC.clean_stats_df.to_csv("data/clean_stats.csv", index=False)
     DC.clean_match_df.to_csv("data/clean_matches.csv", index=False)
     DC.ml_df.to_csv("data/ufc_moneylines.csv", index=False)
+
+    DC.ml_stats_df.to_csv("data/moneylines_and_fight_stats.csv", index=False)
 
     print("finished cleaning data. you can find it in the data/ directory")
