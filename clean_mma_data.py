@@ -75,8 +75,11 @@ class DataCleaner(object):
 
     def _parse_stats(self):
         bio_df = self.clean_bio_df
+        match_df = self.clean_match_df
         if bio_df is None:
             bio_df = self._parse_bios()
+        if match_df is None:
+            match_df = self._parse_matches()
         stats_df0 = self.stats_df.rename(columns={"SGBA\t": "SGBA", "SCBL\t": "SCBL"})
         stats_df0["OpponentID"] = stats_df0["OpponentID"].str[len("http://www.espn.com/mma/fighter/_/id/"):]
         stat_columns = [col for col in stats_df0.columns if col not in ["Date", "Opponent", "Event", "Res.", "OpponentID", "FighterID"]]
@@ -101,6 +104,32 @@ class DataCleaner(object):
         clean_stats_df = stats_df0.merge(bio_df[["FighterID", "Name"]], on="FighterID", how="left")
         clean_stats_df["Date"] = pd.to_datetime(clean_stats_df["Date"])
         clean_stats_df = clean_stats_df.rename(columns={"Res.": "FighterResult"})
+
+        ###### Remove duplicate fights
+        # if values are missing, make sure it's obvious!
+        temp_cols = [
+            'TSL', 'TSA', 'SSL',
+            'SSA', #'TSL-TSA', 
+            'KD', '%BODY', '%HEAD', '%LEG', 'SCBL',
+        'SCBA', 'SCHL', 'SCHA', 'SCLL', 'SCLA', 'RV', 'SR', 'TDL', 'TDA', 'TDS',
+        'TK ACC', 'SGBL', 'SGBA', 'SGHL', 'SGHA', 'SGLL', 'SGLA', 'AD', 'ADTB',
+        'ADHG', 'ADTM', 'ADTS', 'SM', 'SDBL', 'SDBA', 'SDHL',
+        'SDHA', 'SDLL', 'SDLA'
+        ]
+
+        stats_missing = clean_stats_df[temp_cols].isnull().all(1) | (clean_stats_df[temp_cols] == 0).all(1)
+        clean_stats_df["stats_missing"] = stats_missing
+        clean_stats_df.loc[stats_missing, temp_cols] = np.nan
+
+        clean_stats_df["n_null_stats"] = clean_stats_df[temp_cols].isnull().sum(1)
+        clean_stats_df["n_zero_stats"] = (clean_stats_df[temp_cols] == 0).sum(1)
+
+        clean_stats_df = clean_stats_df \
+            .sort_values(["n_null_stats", "n_zero_stats"], ascending=True) \
+            .drop_duplicates(subset=["FighterID", "OpponentID", "Date"]) \
+            .drop(columns=["n_null_stats", "n_zero_stats"]) \
+            .sort_values(["Date", "FighterID"])
+        ######
 
         self.clean_stats_df = clean_stats_df
         return clean_stats_df
@@ -179,8 +208,8 @@ class DataCleaner(object):
 
     def parse_all(self):
         self._parse_bios()
-        self._parse_stats()
         self._parse_matches()
+        self._parse_stats()
         self._parse_moneylines()
         self._join_ml_and_stats()
 
