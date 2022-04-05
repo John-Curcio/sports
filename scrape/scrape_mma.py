@@ -55,8 +55,12 @@ class Fighter(object):
         stat_df_list = []
         for table_tag in tables:
             curr_df = self._scrape_table(table_tag)
+            # TODO TODO TODO get opponent IDs here, join with stats_df
+            row_tags = table_tag.find_all("tr", {"class": "Table__TR Table__TR--sm Table__even"})
+            opponent_ids = [row_tag.find("a", href=True)["href"] for row_tag in row_tags]
+            curr_df["OpponentID"] = opponent_ids
             stat_df_list.append(curr_df)
-        merge_on = ['Date', 'Opponent', 'Event', 'Res.']
+        merge_on = ['Date', 'Opponent', 'Event', 'Res.', 'OpponentID']
         x, y, z = stat_df_list
         self.stats_df = x.merge(y, on=merge_on).merge(z, on=merge_on)
         return self.stats_df
@@ -76,7 +80,7 @@ class Fighter(object):
         # TODO get opponent IDs here, join with match_df
         row_tags = match_soup.find_all("tr", {"class": "Table__TR Table__TR--sm Table__even"})
         opponent_ids = [row_tag.find("a", href=True)["href"] for row_tag in row_tags]
-        self.match_df["OpponentIDs"] = opponent_ids
+        self.match_df["OpponentID"] = opponent_ids
         # for link in table_body.find_all("a", href=True):
         #     fighter_urls.append("https://espn.com" + link["href"])
         return self.match_df
@@ -95,18 +99,6 @@ class Fighter(object):
         bio_dict["Name"] = [self.name]
         self.bio_df = pd.DataFrame(bio_dict)
         return self.bio_df
-
-    def to_dict(self):
-        return {
-            "url": self.base_url, 
-            "name": self.name, 
-            "birthdate": self.birthdate,
-            "height": self.height,
-            "weight": self.weight,
-            "weight_class": self.weight_class,
-            "birthplace": self.birthplace,
-            "association": self.association,
-        } 
 
 
 class FighterSearchScraper(object):
@@ -188,16 +180,21 @@ class FighterSearchScraper(object):
 
 if __name__ == "__main__":
     
+    # url = "https://www.espn.com/mma/fighter/stats/_/id/2560713/derrick-lewis"
+    # fighter = Fighter(url)
+    # stats_df = fighter.scrape_stats()
+    
     # for start_letter, end_letter in [("a", "h"), ("i", "q"), ("r", "z")]:
     all_letters = [chr(i) for i in range(ord("a"), ord("z")+1)]
     for start_letter, end_letter in zip(all_letters, all_letters):
         foo = FighterSearchScraper(start_letter=start_letter, end_letter=end_letter)
-        foo.run_scraper(bio=False, stats=False)
+        foo.run_scraper(bio=False, matches=False, stats=True)
         # print(foo.bio_df.head())
-        # print(foo.stats_df.head())
-        print(foo.matches_df.head())
+        print(foo.stats_df.head())
+        #print(foo.matches_df.head())
         
-        foo.matches_df.to_csv("raw_data/{}_{}_matches_df.csv".format(start_letter, end_letter), index=False)
+        #foo.matches_df.to_csv("raw_data/{}_{}_matches_df.csv".format(start_letter, end_letter), index=False)
+        foo.stats_df.to_csv("raw_data/{}_{}_stats_df.csv".format(start_letter, end_letter), index=False)
         
         # bucket = "sports-bucket-871962086sneed" # pleeeeeease work
         # bucket = 'aws-sam-cli-managed-default-samclisourcebucket-135j2mihh9lxf' # already created on S3
@@ -208,3 +205,13 @@ if __name__ == "__main__":
         #     df.to_csv(df_name, index=False)
         print("done with fighters in letter range {}-{}".format(start_letter, end_letter))
 
+
+# if __name__ == "__main__":
+#     full_match_df = []
+#     suffix = "matches_df.csv"
+#     for filename in os.listdir("raw_data"):
+#         if filename.endswith(suffix):
+#             path = "raw_data/" + filename
+#             full_match_df.append(pd.read_csv(path))
+#     full_match_df = pd.concat(full_match_df)#.rename(columns={"OpponentIDs": "OpponentID"})
+#     full_match_df.to_csv("all_matches.csv", index=False)

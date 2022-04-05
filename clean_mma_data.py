@@ -78,8 +78,8 @@ class DataCleaner(object):
         if bio_df is None:
             bio_df = self._parse_bios()
         stats_df0 = self.stats_df.rename(columns={"SGBA\t": "SGBA", "SCBL\t": "SCBL"})
-
-        stat_columns = [col for col in stats_df0.columns if col not in ["Date", "Opponent", "Event", "Res.", "FighterID"]]
+        stats_df0["OpponentID"] = stats_df0["OpponentID"].str[len("http://www.espn.com/mma/fighter/_/id/"):]
+        stat_columns = [col for col in stats_df0.columns if col not in ["Date", "Opponent", "Event", "Res.", "OpponentID", "FighterID"]]
         for col in stat_columns:
             stats_df0[col] = stats_df0[col].replace("-", np.nan)
         for col in ["TSL-TSA", "%BODY", "%HEAD", "%LEG", "TK ACC"]:
@@ -200,3 +200,6 @@ if __name__ == "__main__":
     DC.ml_stats_df.to_csv("data/moneylines_and_fight_stats.csv", index=False)
 
     print("finished cleaning data. you can find it in the data/ directory")
+
+
+

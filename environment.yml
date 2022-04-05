@@ -18,8 +18,11 @@ dependencies:
   - pystan
   - gpytorch
   - bs4
+  - boto3
   - lxml
   - tqdm
   - pytorch::pytorch
   - pytorch::torchvision
   - pytorch::torchaudio
+  - pymc3
+  - lightgbm
