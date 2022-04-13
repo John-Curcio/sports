@@ -59,6 +59,25 @@ class DataPreprocessor(object):
 
         temp_decision = stats_df["Decision"].fillna("-").str.lower().str.strip()
         stats_df["decision_clean"] = temp_decision.apply(parse_decision)
+        result_sign = stats_df["FighterResult"].map({"W": 1, "L":-1, "D": 0})
+        decision_score = stats_df["decision_clean"].map({"tko_ko":2, "submission":2, 
+                                                         "decision":1, "other":0})
+        stats_df["ordinal_fighter_result"] = result_sign * decision_score
+
+
+        submission_score = stats_df["decision_clean"].map({"submission":1, "decision":0, 
+                                                    "other":0, "tko_ko":0})
+        tko_ko_score = stats_df["decision_clean"].map({"submission":0, "decision":0, 
+                                                    "other":0, "tko_ko":1})
+        decision_score = stats_df["decision_clean"].map({"submission":0, "decision":1, 
+                                                    "other":0, "tko_ko":0})
+        finish_score = stats_df["decision_clean"].map({"submission":1, "decision":0, 
+                                                    "other":0, "tko_ko":1})
+        stats_df["submission_fighter_result"] = result_sign * submission_score
+        stats_df["tko_ko_fighter_result"] = result_sign * tko_ko_score
+        stats_df["decision_fighter_result"] = result_sign * decision_score
+        stats_df["finish_fighter_result"] = result_sign * finish_score
+
         # chael sonnen kept getting sprawled on and winding up on his back
         stats_df["TD_fails"] = stats_df["TDA"] - stats_df["TDL"]
         # does he go for an arm bar and then wind up on bottom?
@@ -192,12 +211,24 @@ class SimpleFeatureExtractor(object):
 
 
 class EloFeatureExtractor(object):
+
+    """
+    real_elo_target_cols: real-valued fight outcomes. 
+        eg my ordinal fight outcome (-2,-1,0,1,2) for loss by finish, loss by dec, draw, etc
+    diff_elo_target_cols: forecast difference in sqrts of two fight stats
+        eg SSL, TDS, SGHL. sqrt is there because Poisson and istg it helps!
+    binary_elo_target_cols: pretty much just Win/Loss
+    """
     
-    def __init__(self, stats_df, real_elo_target_cols, binary_elo_target_cols, elo_alpha=0.3):
+    def __init__(self, stats_df, real_elo_target_cols, diff_elo_target_cols,
+                 binary_elo_target_cols, elo_alpha=0.6):
         self.raw_stats_df = stats_df
         self.real_elo_target_cols = real_elo_target_cols
+        self.diff_elo_target_cols = diff_elo_target_cols
         self.binary_elo_target_cols = binary_elo_target_cols
-        self.elo_target_names = sorted(real_elo_target_cols + binary_elo_target_cols)
+        self.elo_target_names = sorted(diff_elo_target_cols + 
+                                       binary_elo_target_cols +
+                                       real_elo_target_cols)
         self.elo_alpha = elo_alpha
         self.elo_df = None
         self.elo_df_dict = None
@@ -205,13 +236,13 @@ class EloFeatureExtractor(object):
     def fit_transform_all(self):
         # get the target cols
         # get the elo forecasts
-        elo_target_df = self._get_real_elo_targets(self.raw_stats_df)
+        elo_target_df = self._get_diff_elo_targets(self.raw_stats_df)
         self.elo_df = self._get_elo_target_preds(elo_target_df)
         return self.elo_df
     
-    def _get_real_elo_targets(self, df):
+    def _get_diff_elo_targets(self, df):
         elo_target_df = df.copy()
-        for col in self.real_elo_target_cols:
+        for col in self.diff_elo_target_cols:
             # TODO I should make this easier to customize...
             elo_target_df[col+"_diff"] = np.sqrt(df[col]) - np.sqrt(df[col+"_opp"])
             #elo_target_df[col+"_sqrt_diff"] = np.sqrt(df[col]) - np.sqrt(df[col+"_opp"])
@@ -230,9 +261,12 @@ class EloFeatureExtractor(object):
             if feature in self.binary_elo_target_cols:
                 curr_ep = LogisticEwmaPowers(target_col=feature, alpha=self.elo_alpha)
                 temp_df = df.loc[df[feature].notnull()]
-            if feature in self.real_elo_target_cols:
+            if feature in self.diff_elo_target_cols:
                 curr_ep = EwmaPowers(target_col=feature+"_diff", alpha=self.elo_alpha)
                 temp_df = df.loc[df[feature+"_diff"].notnull()]
+            if feature in self.real_elo_target_cols:
+                curr_ep = EwmaPowers(target_col=feature, alpha=self.elo_alpha)
+                temp_df = df.loc[df[feature].notnull()]
             curr_ep.fit(temp_df)
             curr_ep.elo_df["oldEloDiff"] = curr_ep.elo_df["oldFighterElo"] - curr_ep.elo_df["oldOpponentElo"]
             elo_dfs[feature] = curr_ep.elo_df
