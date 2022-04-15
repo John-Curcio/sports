@@ -22,4 +22,9 @@ Some tasks we'll have to do along the way:
 * What's a given fighter's weakness? 
 * How good is Elo alone? How good is ignoring fighter identity and just comparing reach/weight?
 
+<<<<<<< HEAD
 Rocus3 branch add
+=======
+# TODO okay we really gotta just steal shit from here
+https://github.com/shortlikeafox/tiger-millionaire
+>>>>>>> general_framework

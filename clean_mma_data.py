@@ -17,6 +17,7 @@ class DataCleaner(object):
         self.clean_stats_df = None 
         self.clean_bio_df = None 
         self.clean_match_df = None 
+        self.ml_stats_df = None
 
     @staticmethod
     def get_implied_opener_prob(moneyline):
@@ -74,11 +75,14 @@ class DataCleaner(object):
 
     def _parse_stats(self):
         bio_df = self.clean_bio_df
+        match_df = self.clean_match_df
         if bio_df is None:
             bio_df = self._parse_bios()
+        if match_df is None:
+            match_df = self._parse_matches()
         stats_df0 = self.stats_df.rename(columns={"SGBA\t": "SGBA", "SCBL\t": "SCBL"})
-
-        stat_columns = [col for col in stats_df0.columns if col not in ["Date", "Opponent", "Event", "Res.", "FighterID"]]
+        stats_df0["OpponentID"] = stats_df0["OpponentID"].str[len("http://www.espn.com/mma/fighter/_/id/"):]
+        stat_columns = [col for col in stats_df0.columns if col not in ["Date", "Opponent", "Event", "Res.", "OpponentID", "FighterID"]]
         for col in stat_columns:
             stats_df0[col] = stats_df0[col].replace("-", np.nan)
         for col in ["TSL-TSA", "%BODY", "%HEAD", "%LEG", "TK ACC"]:
@@ -100,6 +104,32 @@ class DataCleaner(object):
         clean_stats_df = stats_df0.merge(bio_df[["FighterID", "Name"]], on="FighterID", how="left")
         clean_stats_df["Date"] = pd.to_datetime(clean_stats_df["Date"])
         clean_stats_df = clean_stats_df.rename(columns={"Res.": "FighterResult"})
+
+        ###### Remove duplicate fights
+        # if values are missing, make sure it's obvious!
+        temp_cols = [
+            'TSL', 'TSA', 'SSL',
+            'SSA', #'TSL-TSA', 
+            'KD', '%BODY', '%HEAD', '%LEG', 'SCBL',
+        'SCBA', 'SCHL', 'SCHA', 'SCLL', 'SCLA', 'RV', 'SR', 'TDL', 'TDA', 'TDS',
+        'TK ACC', 'SGBL', 'SGBA', 'SGHL', 'SGHA', 'SGLL', 'SGLA', 'AD', 'ADTB',
+        'ADHG', 'ADTM', 'ADTS', 'SM', 'SDBL', 'SDBA', 'SDHL',
+        'SDHA', 'SDLL', 'SDLA'
+        ]
+
+        stats_missing = clean_stats_df[temp_cols].isnull().all(1) | (clean_stats_df[temp_cols] == 0).all(1)
+        clean_stats_df["stats_missing"] = stats_missing
+        clean_stats_df.loc[stats_missing, temp_cols] = np.nan
+
+        clean_stats_df["n_null_stats"] = clean_stats_df[temp_cols].isnull().sum(1)
+        clean_stats_df["n_zero_stats"] = (clean_stats_df[temp_cols] == 0).sum(1)
+
+        clean_stats_df = clean_stats_df \
+            .sort_values(["n_null_stats", "n_zero_stats"], ascending=True) \
+            .drop_duplicates(subset=["FighterID", "OpponentID", "Date"]) \
+            .drop(columns=["n_null_stats", "n_zero_stats"]) \
+            .sort_values(["Date", "FighterID"])
+        ######
 
         self.clean_stats_df = clean_stats_df
         return clean_stats_df
@@ -161,11 +191,27 @@ class DataCleaner(object):
         self.clean_match_df = clean_match_df
         return clean_match_df
 
+    def _join_ml_and_stats(self):
+        stats_df = self.clean_stats_df.rename(columns={"Opponent": "OpponentName"})
+        ml_df = self.ml_df.copy()
+        stats_df["OpponentName"] = stats_df["OpponentName"].str.strip().str.lower()
+
+        temp_stats_df = stats_df.drop(columns=["Event", "FighterResult", "Name"])
+        full_df0 = ml_df.merge(temp_stats_df, on=["FighterID", "OpponentName", "Date"], 
+                            how="left")
+        temp_stats_df = temp_stats_df.rename(columns={"FighterID": "OpponentID", 
+                                                    "OpponentName": "FighterName"})
+        full_df = full_df0.merge(temp_stats_df, on=["FighterName", "OpponentID", "Date"], 
+                            how="left", suffixes=("_Fighter", "_Opponent"))
+        self.ml_stats_df = full_df
+        return self.ml_stats_df
+
     def parse_all(self):
         self._parse_bios()
-        self._parse_stats()
         self._parse_matches()
+        self._parse_stats()
         self._parse_moneylines()
+        self._join_ml_and_stats()
 
 if __name__ == "__main__":
     odds_path = "scrape/scraped_data/concated-ufc_2017-04-08_2021-12-20.csv"
@@ -180,4 +226,9 @@ if __name__ == "__main__":
     DC.clean_match_df.to_csv("data/clean_matches.csv", index=False)
     DC.ml_df.to_csv("data/ufc_moneylines.csv", index=False)
 
+    DC.ml_stats_df.to_csv("data/moneylines_and_fight_stats.csv", index=False)
+
     print("finished cleaning data. you can find it in the data/ directory")
+
+
+
