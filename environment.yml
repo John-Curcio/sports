@@ -19,6 +19,7 @@ dependencies:
   - gpytorch
   - bs4
   - boto3
+  - html5lib
   - lxml
   - tqdm
   - pytorch::pytorch
