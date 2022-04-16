@@ -92,30 +92,32 @@ class FighterScraper(BasePageScraper):
     
 class FighterBFS(object):
     
-    def __init__(self, root_url, max_depth=3):
+    def __init__(self, root_url, max_iters=3):
         self.root_url = root_url
-        self.max_depth = max_depth
+        self.max_iters = max_iters
         self.fighter_urls_seen = set()
         self.failed_fighter_urls = set()
         self.fighter_data = None
                 
     def crawl(self):
         # just get the URLs of all fighters. Figure out what to do with them later! 
-        curr_depth = 0
-        frontier = {self.root_url}
-        while ((curr_depth < self.max_depth) and len(frontier) > 0):
-            print("current search depth: {}  frontier size: {}".format(curr_depth, len(frontier)))
-            for url in frontier.copy():
-                print("crawling page {}".format(url))
-                self.fighter_urls_seen.add(url)
-                frontier.remove(url)
-                try:
-                    fighter_urls = FighterScraper(url).get_fighter_urls()
-                    fighter_urls = fighter_urls - self.fighter_urls_seen
-                    frontier = frontier | fighter_urls
-                except EmptyResponse:
-                    self.failed_fighter_urls.add(url)
-            curr_depth += 1
+        curr_iter = 0
+        frontier = {self.root_url} # bfs involves a queue but frankly idc
+        while ((curr_iter < self.max_iters) and len(frontier) > 0):
+            url = frontier.pop()
+            self.fighter_urls_seen.add(url)
+            print("iter={}, |frontier|={}, crawling page {}".format(curr_iter, len(frontier), url))
+            try:
+                fighter_urls = FighterScraper(url).get_fighter_urls()
+                frontier |= (fighter_urls - self.fighter_urls_seen)
+                self.fighter_urls_seen |= fighter_urls
+            except EmptyResponse:
+                print("oy, emptyresponse from {}".format(url))
+                self.failed_fighter_urls.add(url)
+            except ValueError:
+                print("oy, valueerror from {}".format(url))
+                self.failed_fighter_urls.add(url)    
+            curr_iter += 1
         return self.fighter_urls_seen
                 # if exception, add to failed fighter urls
 
@@ -125,7 +127,9 @@ if __name__ == "__main__":
     # fs.data
     # root_url = "https://www.bestfightodds.com/fighters/Jon-Jones-819"
     root_url = "https://www.bestfightodds.com/fighters/Anderson-Silva-38"
-    f_bfs = FighterBFS(root_url, max_depth=3)
+    max_iters = np.inf
+    # max_iters = 10
+    f_bfs = FighterBFS(root_url, max_iters)
     f_bfs.crawl()
     url_df = pd.DataFrame(f_bfs.fighter_urls_seen, columns=["url"])
     url_df.to_csv("scraped_data/mma/bfo_fighter_urls.csv", index=False)
