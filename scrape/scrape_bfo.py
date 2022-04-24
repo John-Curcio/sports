@@ -68,6 +68,7 @@ class FighterScraper(BasePageScraper):
     def __init__(self, url, **request_kwargs):
         super().__init__(url, **request_kwargs)
         self.fighter_urls = None
+        self.odds_df = None
         
     def get_html(self):
         r = self.get_request()
@@ -82,13 +83,47 @@ class FighterScraper(BasePageScraper):
         if self.data is None:
             self.get_html()
         # self.data["url"] = self.url
-        soup = BeautifulSoup(self.raw_html, "lxml")
+        soup = BeautifulSoup(self.raw_html)
         tbody = soup.find("tbody")
         urls = [link.get("href") for link in tbody.find_all("a")]
         fighter_urls = [("https://www.bestfightodds.com"+u) 
                              for u in urls if u.startswith("/fighters/")]
         self.fighter_urls = set(fighter_urls) - {self.url}
         return self.fighter_urls
+    
+    def get_odds(self):
+        if self.data is None:
+            self.get_html()
+        odds_df_rows = []
+        soup = BeautifulSoup(self.raw_html)
+        opp_cells = soup.find_all("th", {"class": "oppcell"})
+        opp_cells = [u.find("a").get("href") for u in opp_cells]
+        opp_cell_pairs = list(zip(opp_cells[::2], opp_cells[1::2]))
+        self.data["match_id"] = self.data.index//3
+        for i, grp in self.data.groupby("match_id"):
+            fighter, opp = grp["Matchup"].iloc[1:3]
+            fighter_open, opp_open = grp["Open"].iloc[1:3]
+            fighter_close_left, opp_close_left = grp["Closing range"].iloc[1:3]
+            fighter_close_right, opp_close_right = grp["Closing range.2"].iloc[1:3]
+            event, date = grp["Event"].iloc[1:3]
+            fighter_href, opp_href = opp_cell_pairs[i]
+            odds_df_rows.append({
+                "Event": event,
+                "Date": date,
+                "FighterHref": fighter_href,
+                "OpponentHref": opp_href,
+                "FighterName": fighter,
+                "OpponentName": opp,
+                "FighterOpen": fighter_open,
+                "OpponentOpen": opp_open,
+                "FighterCloseLeft": fighter_close_left,
+                "FighterCloseRight": fighter_close_right,
+                "OpponentCloseLeft": opp_close_left,
+                "OpponentCloseRight": opp_close_right,
+            })
+
+        self.odds_df = pd.DataFrame(odds_df_rows)
+        return self.odds_df
     
 class FighterBFS(object):
     
@@ -121,7 +156,7 @@ class FighterBFS(object):
         return self.fighter_urls_seen
                 # if exception, add to failed fighter urls
 
-if __name__ == "__main__":
+def scrape_all_fighter_urls()
     # fs = FighterScraper("https://www.bestfightodds.com/fighters/Jon-Jones-819")
     # print(fs.get_fighter_urls())
     # fs.data
@@ -136,3 +171,23 @@ if __name__ == "__main__":
 
     fail_df = pd.DataFrame(f_bfs.failed_fighter_urls, columns=["url"])
     fail_df.to_csv("scraped_data/mma/failed_bfo_fighter_urls.csv", index=False)
+
+def get_fighter_odds(urls):
+    # concat fighter odds dfs
+    odds_df_list = []
+    for url in urls:
+        print("scraping odds from {}".format(url))
+        fs = FighterScraper(url)
+        odds_df_list.append(fs.get_odds())
+    return pd.concat(odds_df_list)
+
+if __name__ == "__main__":
+    # scrape_all_fighter_urls()
+    bfo_fighter_urls = pd.read_csv("scraped_data/mma/bfo_fighter_urls.csv")
+    start_letter_ind = len("https://www.bestfightodds.com/fighters/")
+    bfo_fighter_urls["start_letter"] = bfo_fighter_urls["url"].str[start_letter_ind]
+    for start_letter, grp in bfo_fighter_urls.groupby("start_letter"):
+        print("{} fighters with name beginning with {}".format(len(grp), start_letter))
+        odds_df = get_fighter_odds(grp["url"])
+        path = "scraped_data/mma/{}_fighter_odds.csv"
+        odds_df.to_csv(path, index=False)
