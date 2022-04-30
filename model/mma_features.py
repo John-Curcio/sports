@@ -362,3 +362,106 @@ class BioFeatureExtractor(object):
                                     "height_diff", "log_weight_diff"]] = 0
 
         return feat_df
+
+
+class MoneyLineFeatureExtractor(object):
+
+    def __init__(self, ml_df):
+        self.ml_df = ml_df 
+
+    def fit_transform_all(self):
+        ml_df = self.ml_df 
+        ml_df["Date"] = pd.to_datetime(ml_df["Date"])
+        ml_df["p_fighter"] = self.parse_american_odds(ml_df["FighterOpen"])
+        ml_df["p_opponent"] = self.parse_american_odds(ml_df["OpponentOpen"])
+        ml_df["p_fighter_midpoint"] = (ml_df["p_fighter"] + 1 - ml_df["p_opponent"]) / 2
+        denom = (ml_df["p_fighter"] + ml_df["p_opponent"])
+        ml_df["p_fighter_implied"] = ml_df["p_fighter"] / denom 
+        self.ml_df = ml_df 
+        return ml_df 
+
+    def parse_american_odds(self, x:pd.Series):
+        fav_inds = x <= 0
+        dog_inds = x > 0
+        y = pd.Series(0, index=x.index)
+        y.loc[fav_inds] = -1 * x / (100 - x)
+        y.loc[dog_inds] = 100 / (100 + x)
+        return y
+
+
+class EasyPipeline(object):
+
+    def __init__(self, stats_df, bio_df, ml_df):
+        DP = DataPreprocessor(stats_df)
+        self.pp_df = DP.get_preprocessed_df()
+
+        simple_fe = SimpleFeatureExtractor(self. pp_df)
+        simple_fe.fit_transform_all()
+        simple_feat_df = simple_fe.trans_df
+
+        bio_fe = BioFeatureExtractor(bio_df)
+        feat_df = bio_fe.fit_transform_all(simple_feat_df)
+
+        ml_fe = MoneyLineFeatureExtractor(ml_df)
+        ml_df = ml_fe.fit_transform_all()
+
+        self.all_but_elo_df = feat_ml_df = feat_df.merge(
+            ml_df, 
+            on=["Date", "FighterID", "OpponentID"],
+            how="inner"
+        )
+
+    def fit_transform_all(self, elo_alpha, real_elo_target_cols, 
+            diff_elo_target_cols, binary_elo_target_cols):
+        win_col = self.pp_df["FighterResult"].map({"W":1.,"L":0.,"D":np.nan})
+        elo_fe = EloFeatureExtractor(self.pp_df.assign(Win=win_col), 
+                                    elo_alpha = elo_alpha,
+                                    real_elo_target_cols = real_elo_target_cols, 
+                                    diff_elo_target_cols = diff_elo_target_cols,
+                                    binary_elo_target_cols = binary_elo_target_cols)
+        elo_fe.fit_transform_all()
+
+        feat_ml_df = elo_fe.elo_df.merge(
+            self.all_but_elo_df,
+            on=["FighterID", "OpponentID", "Date"],
+            how="inner"
+        )
+        return feat_ml_df
+
+def extract_all_features(stats_df, bio_df, ml_df, real_elo_target_cols, 
+        diff_elo_target_cols, binary_elo_target_cols, elo_alpha):
+    DP = DataPreprocessor(stats_df)
+    pp_df = DP.get_preprocessed_df()
+
+    simple_fe = SimpleFeatureExtractor(pp_df)
+    simple_fe.fit_transform_all()
+
+    win_col = pp_df["FighterResult"].map({"W":1.,"L":0.,"D":np.nan})
+    elo_fe = EloFeatureExtractor(pp_df.assign(Win=win_col), 
+                                elo_alpha = elo_alpha,
+                                real_elo_target_cols = real_elo_target_cols, 
+                                diff_elo_target_cols = diff_elo_target_cols,
+                                binary_elo_target_cols = binary_elo_target_cols)
+    elo_fe.fit_transform_all()
+
+    feat_df = elo_fe.elo_df.merge(
+        simple_fe.trans_df,
+        on=["FighterID", "OpponentID", "Date"],
+        how="inner"
+    )
+
+    bio_fe = BioFeatureExtractor(bio_df)
+    feat_df = bio_fe.fit_transform_all(feat_df)
+
+    ml_fe = MoneyLineFeatureExtractor(ml_df)
+    ml_df = ml_fe.fit_transform_all()
+
+    feat_ml_df = feat_df.merge(
+        ml_df, 
+        on=["Date", "FighterID", "OpponentID"],
+        how="inner"
+    )
+
+    return feat_ml_df
+
+    
