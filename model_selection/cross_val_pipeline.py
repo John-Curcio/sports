@@ -13,7 +13,7 @@ class TimeSeriesCrossVal(object):
         self.fold_pred_df = None
 
     def get_folds(self, df):
-        df = df.sort_values("Date")
+        df = df.sort_values(["Date", "FighterID", "OpponentID"])
         dates = sorted(df["Date"].unique())
         n_dates_per_fold = len(dates) // (self.n_splits + 1)
         for i in range(self.n_splits + 1):
@@ -55,7 +55,7 @@ class TimeSeriesCrossVal(object):
         })
         metrics_df_list = []
         for i, fold_df in self.fold_pred_df.groupby("test_fold"):
-            if len(train_df) > 0:
+            if len(fold_df) > 0:
                 curr_metrics = {
                     "test_fold": i,
                     "min_test_date": fold_df["Date"].min(),

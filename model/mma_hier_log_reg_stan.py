@@ -1,4 +1,4 @@
-import stan 
+import pystan 
 import numpy as np 
 import pandas as pd 
 from sklearn.decomposition import PCA
@@ -59,14 +59,17 @@ generated quantities {
 }
 """
 
-class HierPcaSymmetricModel(PcaSymmetricModel):
-
-    def __init__(self, feat_cols, beta_prior_std=0.1, intra_group_std=0.1, n_pca=8, num_chains=4, num_samples=1000):
-        super().__init__(feat_cols, beta_prior_std, n_pca, num_chains, num_samples)
-        self.intra_group_std = intra_group_std
+class HierPcaSymmetricModel(PcaSymmetricModel):    
+    
+    def __init__(self, feat_cols, beta_prior_std=0.1, intra_group_std=0.1, 
+                 n_pca=8, mcmc=False, num_chains=4, num_samples=1000):
+        super().__init__(feat_cols, beta_prior_std, n_pca, mcmc, num_chains, num_samples)
+        self.intra_group_std = float(intra_group_std)
         self.code = hier_code
-
+        
     def fit_predict(self, train_df, test_df, feat_cols=None):
+        if self.stan_model is None:
+            self._load_stan_model()
         if not feat_cols:
             feat_cols = self.feat_cols
         scale_ = (train_df[feat_cols]**2).mean(0)
@@ -100,6 +103,8 @@ class HierPcaSymmetricModel(PcaSymmetricModel):
             "X2": X_pca_test,
             "ml_logit2": ml_test.values,
         }
-        fit = self._fit(data)
-        return inv_logit(fit["eta2"]).mean(1) 
-        # return fit["y_pred"].mean(1)
+        if self.mcmc:
+            fit = self._fit_mcmc(data)
+            return fit["y_pred"].mean(0) 
+        fit = self._fit_opt(data)
+        return fit["y_pred"]

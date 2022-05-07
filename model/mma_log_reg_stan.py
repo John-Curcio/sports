@@ -1,4 +1,6 @@
-import stan 
+import pystan 
+import pickle
+import hashlib
 import numpy as np 
 import pandas as pd 
 from sklearn.decomposition import PCA
@@ -53,31 +55,55 @@ def logit(x):
 def inv_logit(x):
     return 1 / (1 + np.exp(-x))
 
-class SimpleSymmetricModel(object):
 
-    def __init__(self, feat_cols, beta_prior_std=0.1, n_pca=8, num_chains=4, num_samples=1000):
+class BaseStanModel(object):
+    
+    def _load_stan_model(self):
+        # persistent hash: https://stackoverflow.com/a/2511075
+        code_hash = int(hashlib.md5(self.code.encode('ascii')).hexdigest(), 16)
+        path = f"stan_builds/{code_hash}.pkl"
+        try:
+            with open(path, 'rb') as f:
+                self.stan_model = pickle.load(f)
+        except:
+            print(f"couldn't pickle.load from path {path}, so we'll compile and dump there")
+            self.stan_model = pystan.StanModel(model_code=self.code)
+            with open(path, 'wb') as f:
+                pickle.dump(self.stan_model, f)
+                
+    def _fit_mcmc(self, data):
+        self.fit = self.stan_model.sampling(data=data, iter=self.num_samples, 
+                                       chains=self.num_chains)
+        return self.fit
+    
+    def _fit_opt(self, data):
+        self.fit = self.stan_model.optimizing(data=data)
+        return self.fit
+
+
+class SimpleSymmetricModel(BaseStanModel):
+        
+    def __init__(self, feat_cols, beta_prior_std=0.1, mcmc=False, num_chains=4, num_samples=1000):
         self.feat_cols = feat_cols
         self.beta_prior_std = float(beta_prior_std)
         self.code = code
         self.scale_ = None
         self.fit = None
+        self.mcmc = mcmc
         self.num_chains = num_chains
         self.num_samples = num_samples
-        
-    def _fit(self, data):
-        posterior = stan.build(self.code, data=data, random_seed=1)
-        fit = posterior.sample(num_chains=self.num_chains, num_samples=self.num_samples)
-        self.fit = fit
-        return fit
+        self.stan_model = None
         
     def fit_predict(self, train_df, test_df, feat_cols=None):
         if not feat_cols:
             feat_cols = self.feat_cols
+        if self.stan_model is None:
+            self._load_stan_model()
         scale_ = (train_df[feat_cols]**2).mean(0)
         self.scale_ = scale_
         X_train = train_df[feat_cols] / scale_
         X_test = test_df[feat_cols] / scale_
-
+        
         y_train = train_df["targetWin"]
         y_test = test_df["targetWin"]
 
@@ -95,20 +121,25 @@ class SimpleSymmetricModel(object):
             "X2": X_pca_test,
             "ml_logit2": ml_test.values,
         }
+        if self.mcmc:
+            fit = self._fit_mcmc(data)
+            return fit["y_pred"].mean(0) # weird, they flipped it
+        fit = self._fit_opt(data)
+        return fit["y_pred"]
 
-        fit = self._fit(data)
-        return fit["y_pred"].mean(1)
 
 class PcaSymmetricModel(SimpleSymmetricModel):
-    
-    def __init__(self, feat_cols, beta_prior_std=0.1, n_pca=8, num_chains=4, num_samples=1000):
-        super().__init__(feat_cols, beta_prior_std, num_chains, num_samples)
+        
+    def __init__(self, feat_cols, beta_prior_std=0.1, n_pca=8, mcmc=False, num_chains=4, num_samples=1000):
+        super().__init__(feat_cols, beta_prior_std, mcmc, num_chains, num_samples)
         self.n_pca = n_pca
         self.pca = PCA(n_components=n_pca, whiten=True)
         
     def fit_predict(self, train_df, test_df, feat_cols=None):
         if not feat_cols:
             feat_cols = self.feat_cols
+        if self.stan_model is None:
+            self._load_stan_model()
         scale_ = (train_df[feat_cols]**2).mean(0)
         self.scale_ = scale_
         X_train = train_df[feat_cols] / scale_
@@ -135,8 +166,9 @@ class PcaSymmetricModel(SimpleSymmetricModel):
             "X2": X_pca_test,
             "ml_logit2": ml_test.values,
         }
-
-        fit = self._fit(data)
-        return inv_logit(fit["eta2"]).mean(1)
-        #return fit["y_pred"].mean(1)
+        if self.mcmc:
+            fit = self._fit_mcmc(data)
+            return fit["y_pred"].mean(0) # weird, they flipped it
+        fit = self._fit_opt(data)
+        return fit["y_pred"]
 
