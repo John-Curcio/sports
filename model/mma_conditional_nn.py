@@ -50,7 +50,7 @@ class SymmetricModelWrapper(object):
     def _get_X(self, train_df, test_df):
         X_temp = np.concatenate([train_df[self.fighter_cols], 
                                  train_df[self.opponent_cols]])
-        scale_ = (X_temp**2).mean(0)
+        scale_ = np.sqrt((X_temp**2).mean(0))
         pca = PCA(n_components=self.n_pca, whiten=True)
         pca.fit(X_temp / scale_)
         

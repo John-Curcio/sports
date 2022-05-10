@@ -99,7 +99,7 @@ class SimpleSymmetricModel(BaseStanModel):
             feat_cols = self.feat_cols
         if self.stan_model is None:
             self._load_stan_model()
-        scale_ = (train_df[feat_cols]**2).mean(0)
+        scale_ = np.sqrt((train_df[feat_cols]**2).mean(0))
         self.scale_ = scale_
         X_train = train_df[feat_cols] / scale_
         X_test = test_df[feat_cols] / scale_
@@ -140,7 +140,7 @@ class PcaSymmetricModel(SimpleSymmetricModel):
             feat_cols = self.feat_cols
         if self.stan_model is None:
             self._load_stan_model()
-        scale_ = (train_df[feat_cols]**2).mean(0)
+        scale_ = np.sqrt((train_df[feat_cols]**2).mean(0))
         self.scale_ = scale_
         X_train = train_df[feat_cols] / scale_
         X_test = test_df[feat_cols] / scale_
