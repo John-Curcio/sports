@@ -11,6 +11,8 @@ class MixedPageScraper(BasePageScraper):
     def get_page_urls(self) -> set:
         soup = self.get_soup()
         fighter_info_table = soup.find("div", {"class": "section-wrapper mma-record"})
+        if fighter_info_table is None:
+            return set()
         urls = [link.get("href") for link in fighter_info_table.find_all("a")]
         opponent_urls = set(urls[::2])
         return opponent_urls
