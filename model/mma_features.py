@@ -221,7 +221,7 @@ class EloFeatureExtractor(object):
     """
     
     def __init__(self, stats_df, real_elo_target_cols, diff_elo_target_cols,
-                 binary_elo_target_cols, elo_alpha=0.6):
+                 binary_elo_target_cols, elo_alphas, sqrt_diff_flag = True):
         self.raw_stats_df = stats_df
         self.real_elo_target_cols = real_elo_target_cols
         self.diff_elo_target_cols = diff_elo_target_cols
@@ -229,9 +229,10 @@ class EloFeatureExtractor(object):
         self.elo_target_names = sorted(diff_elo_target_cols + 
                                        binary_elo_target_cols +
                                        real_elo_target_cols)
-        self.elo_alpha = elo_alpha
+        self.elo_alphas = elo_alphas
         self.elo_df = None
         self.elo_df_dict = None
+        self.sqrt_diff_flag = sqrt_diff_flag
     
     def fit_transform_all(self):
         # get the target cols
@@ -243,8 +244,11 @@ class EloFeatureExtractor(object):
     def _get_diff_elo_targets(self, df):
         elo_target_df = df.copy()
         for col in self.diff_elo_target_cols:
-            # TODO I should make this easier to customize...
-            elo_target_df[col+"_diff"] = np.sqrt(df[col]) - np.sqrt(df[col+"_opp"])
+            if self.sqrt_diff_flag:
+                # TODO I should make this easier to customize...
+                elo_target_df[col+"_diff"] = np.sqrt(df[col]) - np.sqrt(df[col+"_opp"])
+            else:
+                elo_target_df[col+"_diff"] = df[col] - df[col+"_opp"]
             #elo_target_df[col+"_sqrt_diff"] = np.sqrt(df[col]) - np.sqrt(df[col+"_opp"])
         return elo_target_df
         
@@ -258,14 +262,15 @@ class EloFeatureExtractor(object):
         for feature in self.elo_target_names:
             curr_ep = None
             temp_df = None
+            alpha = self.elo_alphas[feature]
             if feature in self.binary_elo_target_cols:
-                curr_ep = LogisticEwmaPowers(target_col=feature, alpha=self.elo_alpha)
+                curr_ep = LogisticEwmaPowers(target_col=feature, alpha=alpha)
                 temp_df = df.loc[df[feature].notnull()]
             if feature in self.diff_elo_target_cols:
-                curr_ep = EwmaPowers(target_col=feature+"_diff", alpha=self.elo_alpha)
+                curr_ep = EwmaPowers(target_col=feature+"_diff", alpha=alpha)
                 temp_df = df.loc[df[feature+"_diff"].notnull()]
             if feature in self.real_elo_target_cols:
-                curr_ep = EwmaPowers(target_col=feature, alpha=self.elo_alpha)
+                curr_ep = EwmaPowers(target_col=feature, alpha=alpha)
                 temp_df = df.loc[df[feature].notnull()]
             curr_ep.fit(temp_df)
             curr_ep.elo_df["oldEloDiff"] = curr_ep.elo_df["oldFighterElo"] - curr_ep.elo_df["oldOpponentElo"]
@@ -377,6 +382,25 @@ class MoneyLineFeatureExtractor(object):
         ml_df["p_fighter_midpoint"] = (ml_df["p_fighter"] + 1 - ml_df["p_opponent"]) / 2
         denom = (ml_df["p_fighter"] + ml_df["p_opponent"])
         ml_df["p_fighter_implied"] = ml_df["p_fighter"] / denom 
+
+        # features about closing moneyline odds
+        p_o_close_left  = self.parse_american_odds(ml_df["OpponentCloseLeft"])
+        p_f_close_left  = self.parse_american_odds(ml_df["FighterCloseLeft"])
+        p_o_close_right = self.parse_american_odds(ml_df["OpponentCloseRight"])
+        p_f_close_right = self.parse_american_odds(ml_df["FighterCloseRight"])
+        p_f = (p_f_close_left + p_f_close_right) / 2
+        p_o = (p_o_close_left + p_o_close_right) / 2
+
+        p_f_consensus = p_f / (p_f + p_o)
+        ml_df["p_fighter_close_consensus"] = p_f_consensus
+
+        def inv_sigmoid(x): # just log odds
+            return np.log(x) - np.log(1 - x)
+
+        close_logit = inv_sigmoid(ml_df["p_fighter_close_consensus"])
+        open_logit = inv_sigmoid(ml_df["p_fighter_implied"])
+        ml_df["ml_logit_mvmt"] = close_logit - open_logit
+
         self.ml_df = ml_df 
         return ml_df 
 
@@ -395,7 +419,7 @@ class EasyPipeline(object):
         DP = DataPreprocessor(stats_df)
         self.pp_df = DP.get_preprocessed_df()
 
-        simple_fe = SimpleFeatureExtractor(self. pp_df)
+        simple_fe = SimpleFeatureExtractor(self.pp_df)
         simple_fe.fit_transform_all()
         simple_feat_df = simple_fe.trans_df
 
@@ -403,22 +427,26 @@ class EasyPipeline(object):
         feat_df = bio_fe.fit_transform_all(simple_feat_df)
 
         ml_fe = MoneyLineFeatureExtractor(ml_df)
-        ml_df = ml_fe.fit_transform_all()
+        self.ml_feature_df = ml_fe.fit_transform_all()
 
-        self.all_but_elo_df = feat_ml_df = feat_df.merge(
-            ml_df, 
+        self.all_but_elo_df = feat_df.merge(
+            self.ml_feature_df, 
             on=["Date", "FighterID", "OpponentID"],
             how="inner"
         )
 
-    def fit_transform_all(self, elo_alpha, real_elo_target_cols, 
-            diff_elo_target_cols, binary_elo_target_cols):
+    def fit_transform_all(self, elo_alphas, real_elo_target_cols, 
+            diff_elo_target_cols, binary_elo_target_cols, sqrt_diff_flag = True):
         win_col = self.pp_df["FighterResult"].map({"W":1.,"L":0.,"D":np.nan})
-        elo_fe = EloFeatureExtractor(self.pp_df.assign(Win=win_col), 
-                                    elo_alpha = elo_alpha,
+        stats_df = self.pp_df.assign(Win=win_col)
+        # have to join with ml_feature_df here to get ml_logit_mvmt
+        stats_df = stats_df.merge(self.ml_feature_df, on=["Date", "FighterID", "OpponentID"], how="inner")
+        elo_fe = EloFeatureExtractor(stats_df, 
+                                    elo_alphas = elo_alphas,
                                     real_elo_target_cols = real_elo_target_cols, 
                                     diff_elo_target_cols = diff_elo_target_cols,
-                                    binary_elo_target_cols = binary_elo_target_cols)
+                                    binary_elo_target_cols = binary_elo_target_cols, 
+                                    sqrt_diff_flag = sqrt_diff_flag)
         elo_fe.fit_transform_all()
 
         feat_ml_df = elo_fe.elo_df.merge(
@@ -429,39 +457,45 @@ class EasyPipeline(object):
         return feat_ml_df
 
 def extract_all_features(stats_df, bio_df, ml_df, real_elo_target_cols, 
-        diff_elo_target_cols, binary_elo_target_cols, elo_alpha):
-    DP = DataPreprocessor(stats_df)
-    pp_df = DP.get_preprocessed_df()
+        diff_elo_target_cols, binary_elo_target_cols, elo_alphas):
 
-    simple_fe = SimpleFeatureExtractor(pp_df)
-    simple_fe.fit_transform_all()
-
-    win_col = pp_df["FighterResult"].map({"W":1.,"L":0.,"D":np.nan})
-    elo_fe = EloFeatureExtractor(pp_df.assign(Win=win_col), 
-                                elo_alpha = elo_alpha,
-                                real_elo_target_cols = real_elo_target_cols, 
-                                diff_elo_target_cols = diff_elo_target_cols,
-                                binary_elo_target_cols = binary_elo_target_cols)
-    elo_fe.fit_transform_all()
-
-    feat_df = elo_fe.elo_df.merge(
-        simple_fe.trans_df,
-        on=["FighterID", "OpponentID", "Date"],
-        how="inner"
-    )
-
-    bio_fe = BioFeatureExtractor(bio_df)
-    feat_df = bio_fe.fit_transform_all(feat_df)
-
-    ml_fe = MoneyLineFeatureExtractor(ml_df)
-    ml_df = ml_fe.fit_transform_all()
-
-    feat_ml_df = feat_df.merge(
-        ml_df, 
-        on=["Date", "FighterID", "OpponentID"],
-        how="inner"
-    )
-
+    EP = EasyPipeline(stats_df, bio_df, ml_df)
+    feat_ml_df = EP.fit_transform_all(elo_alphas, real_elo_target_cols,
+                                    diff_elo_target_cols, binary_elo_target_cols)
     return feat_ml_df
+
+    # DP = DataPreprocessor(stats_df)
+    # pp_df = DP.get_preprocessed_df()
+
+    # simple_fe = SimpleFeatureExtractor(pp_df)
+    # simple_fe.fit_transform_all()
+
+    # win_col = pp_df["FighterResult"].map({"W":1.,"L":0.,"D":np.nan})
+    # elo_fe = EloFeatureExtractor(pp_df.assign(Win=win_col), 
+    #                             elo_alphas = elo_alphas,
+    #                             real_elo_target_cols = real_elo_target_cols, 
+    #                             diff_elo_target_cols = diff_elo_target_cols,
+    #                             binary_elo_target_cols = binary_elo_target_cols)
+    # elo_fe.fit_transform_all()
+
+    # feat_df = elo_fe.elo_df.merge(
+    #     simple_fe.trans_df,
+    #     on=["FighterID", "OpponentID", "Date"],
+    #     how="inner"
+    # )
+
+    # bio_fe = BioFeatureExtractor(bio_df)
+    # feat_df = bio_fe.fit_transform_all(feat_df)
+
+    # ml_fe = MoneyLineFeatureExtractor(ml_df)
+    # ml_df = ml_fe.fit_transform_all()
+
+    # feat_ml_df = feat_df.merge(
+    #     ml_df, 
+    #     on=["Date", "FighterID", "OpponentID"],
+    #     how="inner"
+    # )
+
+    # return feat_ml_df
 
     
