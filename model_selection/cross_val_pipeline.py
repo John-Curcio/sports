@@ -8,13 +8,21 @@ class TimeSeriesCrossVal(object):
     # Just regular time series cross validation,
     # but ensures dates don't end up in multiple folds
 
-    def __init__(self, n_splits=4):
+    def __init__(self, n_splits=4, n_dates_per_fold=None, min_test_date=None, p_fighter_implied_col="p_fighter_implied"):
         self.n_splits = n_splits
+        self.n_dates_per_fold = n_dates_per_fold
+        self.min_test_date = min_test_date
+        self.p_fighter_implied_col = p_fighter_implied_col
         self.fold_pred_df = None
 
     def get_folds(self, df):
         dates = sorted(df["Date"].unique())
-        n_dates_per_fold = len(dates) // (self.n_splits + 2)
+        n_dates_per_fold = self.n_dates_per_fold
+        if self.min_test_date is None:
+            self.min_test_date = min(dates)
+        dates = [d for d in dates if d >= self.min_test_date]
+        if self.n_dates_per_fold is None:
+            n_dates_per_fold = len(dates) // (self.n_splits + 2)
         date_starts = dates[::n_dates_per_fold]
         date_ends = dates[n_dates_per_fold::n_dates_per_fold]
         date_ends.append(dates[-1] + pd.Timedelta(days=1))
@@ -25,7 +33,10 @@ class TimeSeriesCrossVal(object):
             
     def get_cross_val_preds(self, model, df):
         train_df = pd.DataFrame()
-        fold_pred_df_list = []        
+        if self.min_test_date is not None:
+            train_df = df.loc[df["Date"] < self.min_test_date]
+            df = df.loc[df["Date"] >= self.min_test_date]
+        fold_pred_df_list = [] 
         for i, test_df in enumerate(self.get_folds(df)):
             if len(train_df) > 0:
                 print("training on date range:", 
@@ -48,10 +59,10 @@ class TimeSeriesCrossVal(object):
             "accuracy_score": lambda fold_df: accuracy_score(y_pred=fold_df["y_pred"].round(), 
                                                              y_true=fold_df["targetWin"]),
             "log_loss": lambda fold_df: log_loss(y_pred=fold_df["y_pred"], 
-                                                 y_true=fold_df["targetWin"]),
-            "ml_log_loss": lambda fold_df: log_loss(y_pred=fold_df["p_fighter_implied"], 
-                                                    y_true=fold_df["targetWin"]),
-            "ml_accuracy_score": lambda fold_df: accuracy_score(y_pred=fold_df["p_fighter_implied"].round(),
+                                                 y_true=fold_df["targetWin"], labels=[0,1]),
+            "ml_log_loss": lambda fold_df: log_loss(y_pred=fold_df[self.p_fighter_implied_col], 
+                                                    y_true=fold_df["targetWin"], labels=[0,1]),
+            "ml_accuracy_score": lambda fold_df: accuracy_score(y_pred=fold_df[self.p_fighter_implied_col].round(),
                                                                 y_true=fold_df["targetWin"]),
             "naive_returns": naive_returns,
             "kelly_returns": eval_kelly,
@@ -89,6 +100,8 @@ def naive_returns(fold_df):
     o_losses = (-1 * o_bet * f_won)
     net_gains = f_gains.sum() + o_gains.sum() + f_losses.sum() + o_losses.sum()
     net_bets = f_bet.sum() + o_bet.sum()
+    if net_bets == 0:
+        return 0
     return net_gains / net_bets
 
 def eval_kelly(fold_df):
