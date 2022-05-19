@@ -90,7 +90,37 @@ class DataPreprocessor(object):
         # how many strikes result in a guy getting knocked down?
         stats_df["KD_power"] = stats_df["KD"] / stats_df["standing_strikes"]
         self._merge_opp_df(stats_df)
+        self._add_rate_feats()
         return self.full_stats_df
+
+    def _add_rate_feats(self):
+        stat_cols = [
+            'TSL', 'TSA', 'SSL',
+            'SSA', #'TSL-TSA', 
+            'KD', #'%BODY', '%HEAD', '%LEG', 
+            'SCBL',
+            'SCBA', 'SCHL', 'SCHA', 'SCLL', 'SCLA', 'RV', 'SR', 'TDL', 'TDA', 'TDS',
+            'TK ACC', 'SGBL', 'SGBA', 'SGHL', 'SGHA', 'SGLL', 'SGLA', 'AD', 'ADTB',
+            'ADHG', 'ADTM', 'ADTS', 'SM', 'SDBL', 'SDBA', 'SDHL',
+            'SDHA', 'SDLL', 'SDLA',
+            #'time_seconds',
+            'TD_fails', #'submission_rate',
+            'distance_strikes_landed', 'clinch_strikes_landed', 'standing_strikes',
+            #'KD_power', 
+            'ground_strikes_landed'
+        ]
+        stats_df = self.full_stats_df.copy()
+        for col in stat_cols:
+            rate_col = "{}_per_sec".format(col)
+            stat_rate = stats_df[col] / stats_df["time_seconds"]
+            stats_df[rate_col] = stat_rate
+            
+            rate_col = "{}_per_sec_opp".format(col)
+            stat_rate = stats_df[(col+"_opp")] / stats_df["time_seconds"]
+            stats_df[rate_col] = stat_rate
+        self.full_stats_df = stats_df
+        return self.full_stats_df
+
 
     def _merge_opp_df(self, stats_df):
         opp_stats = [
@@ -118,6 +148,7 @@ class DataPreprocessor(object):
         full_stats_df["time_seconds"] = full_stats_df["time_seconds"].fillna(full_stats_df["time_seconds_opp"])
         full_stats_df = full_stats_df.drop(columns=["time_seconds_opp"])
         self.full_stats_df = full_stats_df
+        return self.full_stats_df
 
 
 class SimpleFeatureExtractor(object):
@@ -388,10 +419,15 @@ class MoneyLineFeatureExtractor(object):
         p_f_close_left  = self.parse_american_odds(ml_df["FighterCloseLeft"])
         p_o_close_right = self.parse_american_odds(ml_df["OpponentCloseRight"])
         p_f_close_right = self.parse_american_odds(ml_df["FighterCloseRight"])
-        p_f = (p_f_close_left + p_f_close_right) / 2
-        p_o = (p_o_close_left + p_o_close_right) / 2
 
-        p_f_consensus = p_f / (p_f + p_o)
+        ml_df["p_fighter_close_min"] = np.minimum(p_f_close_left, p_f_close_right)
+        ml_df["p_fighter_close_max"] = np.maximum(p_f_close_left, p_f_close_right)
+        ml_df["p_fighter_close_mid"] = (ml_df["p_fighter_close_min"] + ml_df["p_fighter_close_max"]) / 2
+        ml_df["p_opponent_close_min"] = np.minimum(p_o_close_left, p_o_close_right)
+        ml_df["p_opponent_close_max"] = np.maximum(p_o_close_left, p_o_close_right)
+        ml_df["p_opponent_close_mid"] = (ml_df["p_opponent_close_min"] + ml_df["p_opponent_close_max"]) / 2
+
+        p_f_consensus = ml_df["p_fighter_close_mid"] / ml_df[["p_fighter_close_mid", "p_opponent_close_mid"]].sum(1)
         ml_df["p_fighter_close_consensus"] = p_f_consensus
 
         def inv_sigmoid(x): # just log odds
