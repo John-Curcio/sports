@@ -15,9 +15,9 @@ def score_log_loss(model, test_df):
     y_true = test_df["targetWin"]
     return log_loss(y_pred=y_pred, y_true=y_true)
 
-def score_kelly_returns(model, test_df):
+def score_kelly_returns(model, test_df, max_bankroll_fraction=1):
     y_pred = model.predict(test_df)
-    KB = KellyBet(y_pred, test_df)
+    KB = KellyBet(y_pred, test_df, max_bankroll_fraction)
     total_return = KB.returns_df["total_return"].prod()
     return total_return
 
@@ -27,16 +27,22 @@ class KellyBet(object):
     But my model is profitable if this shows profit
     """
 
-    def __init__(self, y_pred, test_df):
+    def __init__(self, y_pred, test_df, max_bankroll_fraction=1, 
+            p_fighter_wager_col="p_fighter", p_opponent_wager_col="p_opponent"):
         # b is % of wager gained on a win (not counting original wager)
         # https://en.wikipedia.org/wiki/Kelly_criterion#Gambling_formula
-        b_fighter = (1/test_df["p_fighter"]) - 1
-        b_opponent = (1/test_df["p_opponent"]) - 1
+        self.p_fighter_wager_col = p_fighter_wager_col
+        self.p_opponent_wager_col = p_opponent_wager_col
+        b_fighter = (1/test_df[self.p_fighter_wager_col]) - 1
+        b_opponent = (1/test_df[self.p_opponent_wager_col]) - 1
         
         kelly_bet_fighter = y_pred + ((y_pred - 1) / b_fighter)
         kelly_bet_opponent = (1 - y_pred) + ((1 - y_pred - 1) / b_opponent)
         kelly_bet_fighter = np.maximum(0, kelly_bet_fighter)
         kelly_bet_opponent = np.maximum(0, kelly_bet_opponent)
+        # can't bet more than the max bankroll fraction on one fight
+        kelly_bet_fighter = np.minimum(max_bankroll_fraction, kelly_bet_fighter)
+        kelly_bet_opponent = np.minimum(max_bankroll_fraction, kelly_bet_opponent)
         
         f_won = test_df["targetWin"] == 1
         o_won = test_df["targetWin"] == 0
@@ -49,7 +55,7 @@ class KellyBet(object):
         total_returns = 1 + fighter_return + opponent_return
         self.returns_df = test_df[["FighterID", "OpponentID", "Date"]].assign(
             p_fighter=y_pred,
-            p_fighter_implied=test_df["p_fighter_implied"],
+            # p_fighter_implied=test_df["p_fighter_implied"],
             b_fighter=b_fighter,
             b_opponent=b_opponent,
             kelly_bet_fighter=kelly_bet_fighter,
