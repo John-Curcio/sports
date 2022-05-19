@@ -16,6 +16,9 @@ class MixedPageScraper(BasePageScraper):
         urls = [link.get("href") for link in fighter_info_table.find_all("a")]
         opponent_urls = set(urls[::2])
         return opponent_urls
+
+    def _get_fighter_name(self, soup):
+        return soup.find("h1", {"class": "newsHeader"}).text#.split(" ")[0]
     
     def get_page_data(self) -> pd.DataFrame:
         soup = self.get_soup()
@@ -31,6 +34,9 @@ class MixedPageScraper(BasePageScraper):
                                  "Method", "Round", "Time"]]
         match_data["OpponentUrl"] = opponent_urls
         match_data["EventUrl"] = event_urls
+        match_data["FighterUrl"] = self.url
+        match_data["Fighter"] = soup.find("h1", {"class": "newsHeader"}).text
+        #match_data["FighterTitle"] = soup.find("title").text
         self.data = match_data
         return match_data
     
