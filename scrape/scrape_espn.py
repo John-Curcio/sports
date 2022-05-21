@@ -179,39 +179,18 @@ class FighterSearchScraper(object):
         self.missed_fighters = pd.DataFrame({"fighter_url": missed_fighters})
 
 if __name__ == "__main__":
-    
+    start_letter, end_letter = "a", "z"
+    foo = FighterSearchScraper(start_letter=start_letter, end_letter=end_letter)
+    foo.run_scraper(bio=True, matches=True, stats=True)
+    print(foo.stats_df.head())
+    foo.stats_df.to_csv("scraped_data/mma/espn/{}_{}_stats_df.csv".format(start_letter, end_letter), index=False)
+    foo.bio_df.to_csv("scraped_data/mma/espn/{}_{}_bio_df.csv".format(start_letter, end_letter), index=False)
+    foo.matches_df.to_csv("scraped_data/mma/espn/{}_{}_matches_df.csv".format(start_letter, end_letter), index=False)
+    print("done with fighters in letter range {}-{}".format(start_letter, end_letter))
+
+
+
     # url = "https://www.espn.com/mma/fighter/stats/_/id/2560713/derrick-lewis"
     # fighter = Fighter(url)
     # stats_df = fighter.scrape_stats()
     
-    # for start_letter, end_letter in [("a", "h"), ("i", "q"), ("r", "z")]:
-    all_letters = [chr(i) for i in range(ord("a"), ord("z")+1)]
-    for start_letter, end_letter in zip(all_letters, all_letters):
-        foo = FighterSearchScraper(start_letter=start_letter, end_letter=end_letter)
-        foo.run_scraper(bio=False, matches=False, stats=True)
-        # print(foo.bio_df.head())
-        print(foo.stats_df.head())
-        #print(foo.matches_df.head())
-        
-        #foo.matches_df.to_csv("raw_data/{}_{}_matches_df.csv".format(start_letter, end_letter), index=False)
-        foo.stats_df.to_csv("raw_data/{}_{}_stats_df.csv".format(start_letter, end_letter), index=False)
-        
-        # bucket = "sports-bucket-871962086sneed" # pleeeeeease work
-        # bucket = 'aws-sam-cli-managed-default-samclisourcebucket-135j2mihh9lxf' # already created on S3
-        # dfs = [foo.bio_df, foo.matches_df, foo.stats_df, foo.missed_fighters]
-        # df_names = ["raw_data/{}_{}_{}.csv".format(start_letter, end_letter, x) 
-        #             for x in ["bio_df", "matches_df", "stats_df", "missed_fighters"]]
-        # for df, df_name in zip(dfs, df_names):
-        #     df.to_csv(df_name, index=False)
-        print("done with fighters in letter range {}-{}".format(start_letter, end_letter))
-
-
-# if __name__ == "__main__":
-#     full_match_df = []
-#     suffix = "matches_df.csv"
-#     for filename in os.listdir("raw_data"):
-#         if filename.endswith(suffix):
-#             path = "raw_data/" + filename
-#             full_match_df.append(pd.read_csv(path))
-#     full_match_df = pd.concat(full_match_df)#.rename(columns={"OpponentIDs": "OpponentID"})
-#     full_match_df.to_csv("all_matches.csv", index=False)
