@@ -190,11 +190,17 @@ class SimpleFeatureExtractor(object):
         total_fight_counter = pd.Series(0, index=sorted(fighters))
         total_ufc_fight_counter = pd.Series(0, index=sorted(fighters))
         last_fight_counter = pd.Series(pd.to_datetime("1900-01-01"), index=sorted(fighters))
+        # arbitrary date to start with - like starting with np.inf
+        first_fight_dt_map = pd.Series(pd.to_datetime("2100-01-01"), index=sorted(fighters))
         feat_df_list = [] # concat this at the end
         for curr_dt, grp in tqdm(df.groupby("Date")):
             fid_vec = grp["FighterID"]
             oid_vec = grp["OpponentID"]
             is_ufc = grp["is_ufc"]
+            first_fight_dt_map[fid_vec] = np.minimum(pd.Series(curr_dt, index=fid_vec), 
+                                                     first_fight_dt_map[fid_vec])
+            first_fight_dt_map[oid_vec] = np.minimum(pd.Series(curr_dt, index=oid_vec), 
+                                                     first_fight_dt_map[oid_vec])
             feat_df_list.append(pd.DataFrame({
                 "FighterID":fid_vec,
                 "OpponentID":oid_vec,
@@ -202,9 +208,11 @@ class SimpleFeatureExtractor(object):
                 "total_fights":fid_vec.map(total_fight_counter),
                 "total_ufc_fights":fid_vec.map(total_ufc_fight_counter),
                 "t_since_last_fight":(curr_dt - fid_vec.map(last_fight_counter)).dt.days,
+                "t_since_first_fight":(curr_dt - fid_vec.map(first_fight_dt_map)).dt.days,
                 "total_fights_opp":oid_vec.map(total_fight_counter),
                 "total_ufc_fights_opp":oid_vec.map(total_ufc_fight_counter),
                 "t_since_last_fight_opp":(curr_dt - oid_vec.map(last_fight_counter)).dt.days,
+                "t_since_first_fight_opp":(curr_dt - oid_vec.map(first_fight_dt_map)).dt.days,
             }))
             # if somehow this guy takes multiple fights in the same day,
             # just count it as one fight. 
@@ -219,6 +227,7 @@ class SimpleFeatureExtractor(object):
             total_fight_counter[unknown_fighter_id] = 0
             total_ufc_fight_counter[unknown_fighter_id] = 0
             last_fight_counter[unknown_fighter_id] = pd.to_datetime("1900-01-01")
+            first_fight_dt_map[unknown_fighter_id] = curr_dt
         feat_df = pd.concat(feat_df_list)
         # cap t_since_last_fight, which can go really long
         # note that because last_fight_counter is initialized to a really early date,
@@ -238,6 +247,10 @@ class SimpleFeatureExtractor(object):
                                             feat_df["total_ufc_fights_opp"])
         feat_df["total_ufc_fights_sqrt_diff"] = (np.sqrt(feat_df["total_ufc_fights"]) - 
                                                  np.sqrt(feat_df["total_ufc_fights_opp"]))
+        feat_df["t_since_first_fight_diff"] = (feat_df["t_since_first_fight"] -
+                                               feat_df["t_since_first_fight_opp"])
+        feat_df["t_since_first_fight_log_diff"] = (np.log(feat_df["t_since_first_fight"]) -
+                                                   np.log(feat_df["t_since_first_fight_opp"]))
         return feat_df
 
 
