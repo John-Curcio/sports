@@ -6,72 +6,15 @@ from mma_espn_replace import replace_dict, manual_fix_ml_df
 
 class DataCleaner(object):
 
-    def __init__(self, odds_path, stats_path, bio_path, match_path):
-        self.odds_df = pd.read_csv(odds_path)
+    def __init__(self, stats_path, bio_path, match_path):
         self.stats_df = pd.read_csv(stats_path)
         self.bio_df = pd.read_csv(bio_path)
         self.match_df = pd.read_csv(match_path)
 
-        self.ml_df = None
         self.totals_df = None
         self.clean_stats_df = None 
         self.clean_bio_df = None 
         self.clean_match_df = None 
-        self.ml_stats_df = None
-
-    @staticmethod
-    def get_implied_opener_prob(moneyline):
-        if moneyline is np.nan:
-            return np.nan
-        if moneyline == "-":
-            return np.nan
-        if moneyline.startswith("+"):
-            # plus for the underdog
-            return 100. / (float(moneyline[1:]) + 100)
-        if moneyline.startswith("-"):
-            # negative for the favorite
-            x = float(moneyline[1:])
-            return x / (x + 100)
-        raise Exception("can't parse money line: {}".format(moneyline))
-
-    def _parse_moneylines(self):
-        ml_df = self.odds_df.query("bet_type == 'money-line'").drop(columns=["Unnamed: 0", "bet_type", "score_A", "score_B"])
-        ml_df["date"] = pd.to_datetime(ml_df["date"])
-        
-        p_A = ml_df["opener_A"].apply(self.get_implied_opener_prob)
-        p_B = ml_df["opener_B"].apply(self.get_implied_opener_prob)
-        p_A_norm = p_A / (p_A + p_B)
-        ml_df["opener_p_A_norm"] = p_A_norm
-        # _norm because p_A and p_B may not add to 1. casinos effectively taking less juice
-        ml_df["team_A"] = ml_df["team_A"].str.strip().str.lower()
-        ml_df["team_B"] = ml_df["team_B"].str.strip().str.lower()
-        ml_df0 = ml_df.rename(columns={"team_A": "FighterName", "team_B": "OpponentName", 
-                                    "date": "Date", "opener_p_A_norm": "FighterOpener"})
-        ml_df0 = manual_fix_ml_df(ml_df0) # manually tweak some rows to find matches btw espn and sbr
-        #### matching with fights btw ml_df  and clean_match_df
-        # matching on Date=Date, FighterName=FighterName, OpponentName=OpponentName
-        ml_df1 = ml_df0.merge(self.clean_match_df, on=["FighterName", "OpponentName", "Date"], how="left")
-        # matching on Date=Date, FighterName=OpponentName, OpponentName=FighterName
-        ml_df2 = ml_df0.rename(columns={"FighterName": "OpponentName", "OpponentName": "FighterName", "date": "Date"})
-        ml_df2 = ml_df2.merge(self.clean_match_df, on=["FighterName", "OpponentName", "Date"], how="left")
-
-        clean_ml_df = ml_df1.copy()
-        # FighterID -> OpponentID and vice versa because ml_df2 is the result of swapping
-        # note that we don't have to swap socre_A & score_B, opener_A & opener_B, etc
-        clean_ml_df["FighterID"] = clean_ml_df["FighterID"].fillna(ml_df2["OpponentID"])
-        clean_ml_df["OpponentID"] = clean_ml_df["OpponentID"].fillna(ml_df2["FighterID"])
-        ml_df2["FighterResult"] = ml_df2["FighterResult"].replace({"W": "L", "L": "W"})
-        for col in ["FighterResult", "Decision", "Rnd", "Time", "Event"]:
-            clean_ml_df[col] = clean_ml_df[col].fillna(ml_df2[col])
-        ## This should leave about 149 FighterID, OpponentIDs unaccounted for. Almost all of these fights 
-        # appear to simply have been cancelled. 
-        self.ml_df = clean_ml_df
-        return ml_df
-        
-    def _parse_totals(self):
-        # I'm just gonna forget about this for now. Just seems
-        # more annoying to parse, let alone model
-        return NotImplemented
 
     def _parse_stats(self):
         bio_df = self.clean_bio_df
@@ -191,42 +134,29 @@ class DataCleaner(object):
         self.clean_match_df = clean_match_df
         return clean_match_df
 
-    def _join_ml_and_stats(self):
-        stats_df = self.clean_stats_df.rename(columns={"Opponent": "OpponentName"})
-        ml_df = self.ml_df.copy()
-        stats_df["OpponentName"] = stats_df["OpponentName"].str.strip().str.lower()
-
-        temp_stats_df = stats_df.drop(columns=["Event", "FighterResult", "Name"])
-        full_df0 = ml_df.merge(temp_stats_df, on=["FighterID", "OpponentName", "Date"], 
-                            how="left")
-        temp_stats_df = temp_stats_df.rename(columns={"FighterID": "OpponentID", 
-                                                    "OpponentName": "FighterName"})
-        full_df = full_df0.merge(temp_stats_df, on=["FighterName", "OpponentID", "Date"], 
-                            how="left", suffixes=("_Fighter", "_Opponent"))
-        self.ml_stats_df = full_df
-        return self.ml_stats_df
-
     def parse_all(self):
         self._parse_bios()
         self._parse_matches()
         self._parse_stats()
-        self._parse_moneylines()
-        self._join_ml_and_stats()
 
 if __name__ == "__main__":
-    odds_path = "scrape/scraped_data/concated-ufc_2017-04-08_2021-12-20.csv"
-    stats_path = "scrape/scraped_data/mma/all_fighter_stats.csv"
-    bio_path = "scrape/scraped_data/mma/all_fighter_bios.csv"
-    match_path = "scrape/scraped_data/mma/all_matches.csv"
-    DC = DataCleaner(odds_path, stats_path, bio_path, match_path)
+    stats_path = "scrape/scraped_data/mma/espn/espn_stats_2022-05-20.csv"
+    bio_path = "scrape/scraped_data/mma/espn/espn_bios_2022-05-20.csv"
+    match_path = "scrape/scraped_data/mma/espn/espn_matches_2022-05-20.csv"
+
+    DC = DataCleaner(stats_path, bio_path, match_path)
     DC.parse_all()
 
-    DC.clean_bio_df.to_csv("data/clean_bios.csv", index=False)
-    DC.clean_stats_df.to_csv("data/clean_stats.csv", index=False)
-    DC.clean_match_df.to_csv("data/clean_matches.csv", index=False)
-    DC.ml_df.to_csv("data/ufc_moneylines.csv", index=False)
+    on_cols = ["FighterID", "OpponentID", "Date"]
+    stats_df = DC.clean_stats_df.merge(
+        DC.clean_match_df[[*on_cols, 'Decision', 'Rnd', 'Time']],
+        on=on_cols,
+        how="left"
+    )
 
-    DC.ml_stats_df.to_csv("data/moneylines_and_fight_stats.csv", index=False)
+    DC.clean_bio_df.to_csv("data/clean_bios.csv", index=False)
+    stats_df.to_csv("data/clean_stats.csv", index=False)
+    DC.clean_match_df.to_csv("data/clean_matches.csv", index=False)
 
     print("finished cleaning data. you can find it in the data/ directory")
 
