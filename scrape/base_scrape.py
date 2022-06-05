@@ -80,7 +80,7 @@ class BasePageScraper(ABC):
         raw_html = self.raw_html
         if raw_html is None:
             raw_html = self.get_html()
-        return BeautifulSoup(raw_html)
+        return BeautifulSoup(raw_html, features="lxml")
     
     @abstractmethod
     def get_page_urls(self):
