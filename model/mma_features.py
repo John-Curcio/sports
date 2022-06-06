@@ -64,7 +64,6 @@ class DataPreprocessor(object):
                                                          "decision":1, "other":0})
         stats_df["ordinal_fighter_result"] = result_sign * decision_score
 
-
         submission_score = stats_df["decision_clean"].map({"submission":1, "decision":0, 
                                                     "other":0, "tko_ko":0})
         tko_ko_score = stats_df["decision_clean"].map({"submission":0, "decision":0, 
@@ -77,23 +76,39 @@ class DataPreprocessor(object):
         stats_df["tko_ko_fighter_result"] = result_sign * tko_ko_score
         stats_df["decision_fighter_result"] = result_sign * decision_score
         stats_df["finish_fighter_result"] = result_sign * finish_score
-
-        # chael sonnen kept getting sprawled on and winding up on his back
-        stats_df["TD_fails"] = stats_df["TDA"] - stats_df["TDL"]
-        # does he go for an arm bar and then wind up on bottom?
-        stats_df["submission_rate"] = (stats_df["decision_clean"] == 'submission').astype(int) / stats_df["SM"]
-
         stats_df["distance_strikes_landed"] = stats_df[["SDBL", "SDHL", "SDLL"]].sum(1, skipna=False)
         stats_df["clinch_strikes_landed"] = stats_df[["SCBL", "SCHL", "SCLL"]].sum(1, skipna=False)
         stats_df["ground_strikes_landed"] = stats_df[["SGBL", "SGHL", "SGLL"]].sum(1, skipna=False)
         stats_df["standing_strikes"] = stats_df["distance_strikes_landed"] + stats_df["clinch_strikes_landed"]
+        sm_success = (stats_df["decision_clean"] == 'submission') & (stats_df["FighterResult"] == 'W')
+        stats_df["SM_success"] = sm_success.fillna(False).astype(int)
         # how many strikes result in a guy getting knocked down?
         stats_df["KD_power"] = stats_df["KD"] / stats_df["standing_strikes"]
+        stats_df = self._add_fail_feats(stats_df)
         self._merge_opp_df(stats_df)
-        self._add_rate_feats()
+        # self._add_rate_feats()
         return self.full_stats_df
 
-    def _add_rate_feats(self):
+    @staticmethod
+    def _add_fail_feats(stats_df):
+        stat_prefix_cols = [
+            "SCB", "SCH", "SCL", 
+            "SDB", "SDH", "SDL", 
+            "SGB", "SGH", "SGL", 
+            "SS", "TD", "TS",
+        ]
+        stats_df = stats_df.copy()
+        for prefix in stat_prefix_cols:
+            attempt_col = prefix + "A"
+            success_col = prefix + "L"
+            fail_col = prefix + "_fails"
+            fails = stats_df[attempt_col] - stats_df[success_col]
+            stats_df[fail_col] = np.maximum(0, fails)
+        stats_df["SM_fails"] = np.maximum(0, stats_df["SM"] - stats_df["SM_success"])
+        return stats_df
+
+    @staticmethod
+    def _add_rate_feats(stats_df):
         stat_cols = [
             'TSL', 'TSA', 'SSL',
             'SSA', #'TSL-TSA', 
@@ -104,12 +119,11 @@ class DataPreprocessor(object):
             'ADHG', 'ADTM', 'ADTS', 'SM', 'SDBL', 'SDBA', 'SDHL',
             'SDHA', 'SDLL', 'SDLA',
             #'time_seconds',
-            'TD_fails', #'submission_rate',
             'distance_strikes_landed', 'clinch_strikes_landed', 'standing_strikes',
             #'KD_power', 
             'ground_strikes_landed'
         ]
-        stats_df = self.full_stats_df.copy()
+        stats_df = stats_df.copy()
         for col in stat_cols:
             rate_col = "{}_per_sec".format(col)
             stat_rate = stats_df[col] / stats_df["time_seconds"]
@@ -118,23 +132,25 @@ class DataPreprocessor(object):
             rate_col = "{}_per_sec_opp".format(col)
             stat_rate = stats_df[(col+"_opp")] / stats_df["time_seconds"]
             stats_df[rate_col] = stat_rate
-        self.full_stats_df = stats_df
-        return self.full_stats_df
+        return stats_df
 
+    def _merge_opp_df(self, stats_df, opp_stats=None):
+        if opp_stats is None:
+            opp_stats = [
+                'TSL', 'TSA', 'SSL',
+                'SSA', 'TSL-TSA', 'KD', '%BODY', '%HEAD', '%LEG', 'SCBL',
+                'SCBA', 'SCHL', 'SCHA', 'SCLL', 'SCLA', 'RV', 'SR', 'TDL', 'TDA', 'TDS',
+                'TK ACC', 'SGBL', 'SGBA', 'SGHL', 'SGHA', 'SGLL', 'SGLA', 'AD', 'ADTB',
+                'ADHG', 'ADTM', 'ADTS', 'SM', 'SDBL', 'SDBA', 'SDHL',
+                'SDHA', 'SDLL', 'SDLA',
+                'time_seconds',
+                'distance_strikes_landed', 'clinch_strikes_landed', 'standing_strikes',
+                'KD_power', 'ground_strikes_landed', 'SM_success',
 
-    def _merge_opp_df(self, stats_df):
-        opp_stats = [
-            'TSL', 'TSA', 'SSL',
-            'SSA', 'TSL-TSA', 'KD', '%BODY', '%HEAD', '%LEG', 'SCBL',
-            'SCBA', 'SCHL', 'SCHA', 'SCLL', 'SCLA', 'RV', 'SR', 'TDL', 'TDA', 'TDS',
-            'TK ACC', 'SGBL', 'SGBA', 'SGHL', 'SGHA', 'SGLL', 'SGLA', 'AD', 'ADTB',
-            'ADHG', 'ADTM', 'ADTS', 'SM', 'SDBL', 'SDBA', 'SDHL',
-            'SDHA', 'SDLL', 'SDLA',
-            'time_seconds',
-            'TD_fails', 'submission_rate',
-            'distance_strikes_landed', 'clinch_strikes_landed', 'standing_strikes',
-            'KD_power', 'ground_strikes_landed'
-        ]
+                'SCB_fails', 'SCH_fails', 'SCL_fails', 'SDB_fails', 'SDH_fails', 'SDL_fails',
+                'SGB_fails', 'SGH_fails', 'SGL_fails', 'SS_fails', 'TD_fails', 'TS_fails',
+                'SM_fails',
+            ]
 
         opp_df = stats_df[["FighterID", "OpponentID", "Date"] + opp_stats]
 
@@ -464,9 +480,10 @@ class MoneyLineFeatureExtractor(object):
 
 class EasyPipeline(object):
 
-    def __init__(self, stats_df, bio_df, ml_df):
+    def __init__(self, stats_df, bio_df, ml_df, gender_df):
         DP = DataPreprocessor(stats_df)
         self.pp_df = DP.get_preprocessed_df()
+        self.pp_df = self.add_fight_gender(self.pp_df, gender_df)
 
         simple_fe = SimpleFeatureExtractor(self.pp_df)
         simple_fe.fit_transform_all()
@@ -483,6 +500,16 @@ class EasyPipeline(object):
             on=["Date", "FighterID", "OpponentID"],
             how="inner"
         )
+        self.all_but_elo_df = self.add_fight_gender(self.all_but_elo_df, gender_df)
+
+    def add_fight_gender(self, fight_df, gender_df):
+        gender_map = gender_df.set_index("FighterID").to_dict()["gender"]
+
+        f_gender = fight_df["FighterID"].map(gender_map)
+        o_gender = fight_df["OpponentID"].map(gender_map)
+        f_gender = f_gender.fillna(o_gender)
+
+        return fight_df.assign(gender=f_gender)
 
     def fit_transform_all(self, elo_alphas, real_elo_target_cols, 
             diff_elo_target_cols, binary_elo_target_cols, sqrt_diff_flag = True):
