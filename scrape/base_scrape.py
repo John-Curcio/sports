@@ -95,8 +95,8 @@ class BasePageScraper(ABC):
 
 class BaseBfs(ABC):
     
-    def __init__(self, root_url, max_depth=3, verbose=True):
-        self.root_url = root_url
+    def __init__(self, root_urls, max_depth=3, verbose=True):
+        self.root_urls = root_urls
         self.max_depth = max_depth
         self.verbose = verbose
         self.urls_seen = set()
@@ -104,16 +104,17 @@ class BaseBfs(ABC):
         
     @abstractmethod
     def get_neighbor_urls(self, url:str) -> set:
-        # just initialize an instance of BasePageScraper and 
-        # call the get_page_urls method
+        # just initialize an instance of BasePageScraper and call the get_page_urls method
+        # there's gotta be a cleaner OOP-y way to do this but idgaf rn
         raise NotImplemented
         
     def crawl_urls(self):
         # get the urls of all pages. scrape their contents later
         frontier = Queue()
-        frontier.put(self.root_url)
+        for root_url in self.root_urls:
+            frontier.put(root_url)
         curr_depth = 0
-        curr_width = 1
+        curr_width = frontier.qsize()
         while ((curr_depth < self.max_depth) and frontier.qsize() > 0):
             url = frontier.get()
             if url in self.urls_seen:
@@ -141,33 +142,5 @@ class BaseBfs(ABC):
                 curr_depth += 1
                 curr_width = frontier.qsize()
         return self.urls_seen
-
-class MultiRootBfs(ABC):
-
-    def __init__(self, root_urls, max_depth=3, verbose=True):
-        self.root_urls = root_urls 
-        self.max_depth = max_depth
-        self.verbose = verbose 
-        self.urls_seen = set()
-        self.failed_urls = set()
-
-    @abstractmethod
-    def get_bfs(self, root_url, max_depth, verbose):
-        raise NotImplemented
-
-    @abstractmethod
-    def get_page_data(self, url):
-        raise NotImplemented
-
-    def crawl_urls(self):
-        # get the urls of all pages. scrape their contents later
-        for root_url in self.root_urls:
-            bfs = self.get_bfs(root_url, max_depth=self.max_depth, verbose=self.verbose)
-            bfs.urls_seen = self.urls_seen
-            bfs.crawl_urls()
-            self.urls_seen |= bfs.urls_seen
-            self.failed_urls |= bfs.failed_urls
-        return self.urls_seen
-
 
     
