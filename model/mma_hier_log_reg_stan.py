@@ -2,7 +2,7 @@ import pystan
 import numpy as np 
 import pandas as pd 
 from sklearn.decomposition import PCA
-from model.mma_log_reg_stan import SimpleSymmetricModel, PcaSymmetricModel, logit, inv_logit
+from model.mma_log_reg_stan import SimpleSymmetricModel, logit, inv_logit
 
 hier_code = """
 
@@ -59,48 +59,48 @@ generated quantities {
 }
 """
 
-class HierPcaSymmetricModel(PcaSymmetricModel):    
-    
+class HierSymmetricModel(SimpleSymmetricModel):
+
     def __init__(self, feat_cols, beta_prior_std=0.1, intra_group_std=0.1, 
-                 n_pca=8, mcmc=False, num_chains=4, num_samples=1000):
-        super().__init__(feat_cols, beta_prior_std, n_pca, mcmc, num_chains, num_samples)
+                 mcmc=False, num_chains=4, num_samples=1000):
+        super().__init__(feat_cols, beta_prior_std, mcmc, num_chains, num_samples)
         self.intra_group_std = float(intra_group_std)
         self.code = hier_code
-        
+
     def fit_predict(self, train_df, test_df, feat_cols=None):
-        if self.stan_model is None:
-            self._load_stan_model()
         if not feat_cols:
             feat_cols = self.feat_cols
+        if self.stan_model is None:
+            self._load_stan_model()
+        # If there are PCA feats, I might as well include them in the scaling
         scale_ = np.sqrt((train_df[feat_cols]**2).mean(0))
         self.scale_ = scale_
         X_train = train_df[feat_cols] / scale_
         X_test = test_df[feat_cols] / scale_
-        
-        X_pca_train = self.pca.fit_transform(X_train)
-        X_pca_test = self.pca.transform(X_test)
 
         y_train = train_df["targetWin"]
-        y_test = test_df["targetWin"]
 
         ml_train = logit(train_df["p_fighter_implied"])
         ml_test = logit(test_df["p_fighter_implied"])
         
+        X_ml_train = np.concatenate([X_train, ml_train.values.reshape(-1,1)], axis=1)
+        X_ml_test = np.concatenate([X_test, ml_test.values.reshape(-1,1)], axis=1)
+
         is_m_train = train_df["gender"].map({"M":1, "W":0})
         is_m_test = test_df["gender"].map({"M":1, "W":0})
         
         data = {
             "n": train_df.shape[0],
             "n2": test_df.shape[0],
-            "d": self.n_pca,
+            "d": X_ml_train.shape[1],
             "y": y_train.astype(int).values,
             "beta_prior_std": self.beta_prior_std,
             "intra_group_std": self.intra_group_std,
             "is_m": is_m_train.values,
             "is_m2": is_m_test.values,
-            "X": X_pca_train,
+            "X": X_ml_train,
             "ml_logit": ml_train.values,
-            "X2": X_pca_test,
+            "X2": X_ml_test,
             "ml_logit2": ml_test.values,
         }
         if self.mcmc:
