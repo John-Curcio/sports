@@ -16,3 +16,11 @@ work in progress for sure. including this README
 * `intro EDA.ipynb` **is the first file you should open.** It's short and light on words.
 * `environment.yml` enumerates the packages you might need for this repository. They're pretty basic, but if you want to set up a conda environment for this, run `conda env create -f environment.yml` and then `conda activate sports`. -->
 
+# Getting started
+
+* Install anaconda on your machine if you haven't already done so
+* Clone this repo
+* Run `conda env create -f pystan2_env.yml`
+* Open `example run.ipynb` and try to run it
+    * On your first run, the model may take a few minutes to compile. Afterwards, the compiled model gets saved to `sports/stan_builds` so this should only happen once
+    * If successful, scroll to the bottom
