@@ -36,6 +36,8 @@ dependencies:
   - pip:
     - cmdstanpy>=1.0.0
     - pystan~=2.19.1.1
+    - thefuzz[speedup]
+    - bidict
     # - nest_asyncio
     # - httpstan==4.7.2
     # - pysimdjson==3.2.0
