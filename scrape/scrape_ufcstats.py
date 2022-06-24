@@ -170,7 +170,8 @@ class UfcFightDetails(BasePageScraper):
         self.strikes = self.parse_sum_table(strikes, fighter_ids)
         self.round_strikes = self.parse_round_strikes_table(round_strikes, fighter_ids)
         self.round_totals = self.parse_round_totals_table(round_totals, fighter_ids)
-        return self.totals.merge(self.strikes, on=["FighterID"], suffixes=("", "_y"))
+        return self.totals
+        #return self.totals.merge(self.strikes, on=["FighterID"], suffixes=("", "_y"))
     
 
 class UfcFighterScraper(BasePageScraper):
@@ -265,6 +266,7 @@ class FullUfcScraper(object):
         self.strikes_df = None
         self.round_totals_df = None
         self.round_strikes_df = None
+        self.fight_description_df = None
         self.event_data = None
         self.fighter_data = None
         
@@ -273,21 +275,25 @@ class FullUfcScraper(object):
         strikes = []
         round_totals = []
         round_strikes = []
+        descriptions = []
         for fight_url in tqdm(self.fight_urls):
             fight_scraper = UfcFightDetails(fight_url)
             result = fight_scraper.get_page_data()
             if result is not None:
                 for df in [fight_scraper.totals, fight_scraper.strikes, 
+                        fight_scraper.fight_description,
                         fight_scraper.round_totals, fight_scraper.round_strikes]:
                     df["FightID"] = fight_url
                 totals.append(fight_scraper.totals)
                 strikes.append(fight_scraper.strikes)
                 round_totals.append(fight_scraper.round_totals)
                 round_strikes.append(fight_scraper.round_strikes)
+                descriptions.append(fight_scraper.fight_description)
         self.totals_df = pd.concat(totals).reset_index(drop=True)
         self.strikes_df = pd.concat(strikes).reset_index(drop=True)
         self.round_totals_df = pd.concat(round_totals).reset_index(drop=True)
         self.round_strikes_df = pd.concat(round_strikes).reset_index(drop=True)
+        self.fight_description_df = pd.DataFrame(descriptions)
         return self.round_strikes_df
     
     def scrape_events(self):
@@ -334,6 +340,7 @@ if __name__ == "__main__":
         "strikes": full_scraper.strikes_df,
         "round_totals": full_scraper.round_totals_df,
         "round_strikes": full_scraper.round_strikes_df,
+        "fight_descriptions": full_scraper.fight_description_df,
         "event_data": full_scraper.event_data,
         "fighter_data": full_scraper.fighter_data,
     }
