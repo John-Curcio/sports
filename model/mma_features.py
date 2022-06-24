@@ -1,577 +1,127 @@
-from tqdm import tqdm
+# import numpy as np 
 import pandas as pd 
-import numpy as np 
-from sklearn.experimental import enable_iterative_imputer
-from sklearn.impute import IterativeImputer
+from model.mma_elo_model import RealEloEstimator, BinaryEloEstimator
+from sklearn.decomposition import PCA
 
-from model.mma_elo_model import EwmaPowers, LogisticEwmaPowers, unknown_fighter_id
-
-# since these are rolling features, data in the test dataset is inherently dependent on the train dataset
-# but the train dataset can be used by itself
-# that being said I should probably worry about that later. figure out how to prevent data leakage later
-# oh fuck okay, i need to get stats for how good the other guy is
-
-class DataPreprocessor(object):
-
-    def __init__(self, stats_df):
-        self.stats_df = stats_df 
-        self.full_stats_df = None
-
-    def get_preprocessed_df(self):
-        # calculate useful stats that aren't necessarily rolling features
-        # time in seconds
-        stats_df = self.stats_df.copy()
-        stats_df["Date"] = pd.to_datetime(stats_df["Date"])
-        def parse_time_str(s):
-            if s == "-":
-                return np.nan
-            minutes, seconds = s.split(":")
-            return int(minutes)*60 + int(seconds)
-        def parse_round_str(s):
-            if s == "-":
-                return np.nan
-            if s == "20": 
-                # a typo that occurred exactly once
-                return 2
-            return int(s)
-        stats_df["time_seconds"] = (
-            stats_df["Time"].fillna("-").apply(parse_time_str) + 
-            ((stats_df["Rnd"].fillna("-").apply(parse_round_str) - 1) * 5 * 60) 
-            # rounds are 5 minutes
-        )
-        # could not continue --> TKO or stoppage?
-        # overturned / no contest is same thing.
-        # draw, no contest, DQ or other weird results should all just get lumped into "other"
-        def parse_decision(s):
-            if (s.startswith("submission") or 
-                s.startswith("sumission") or
-                s.startswith("technical submission")
-            ):
-                return "submission"
-            if (s.startswith("tko") or 
-                s.startswith("ko") or
-                (s == 'could not continue')
-            ):
-                return "tko_ko"
-            if "decision" in s:
-                return "decision"
-            return "other"
-
-        temp_decision = stats_df["Decision"].fillna("-").str.lower().str.strip()
-        stats_df["decision_clean"] = temp_decision.apply(parse_decision)
-        result_sign = stats_df["FighterResult"].map({"W": 1, "L":-1, "D": 0})
-        decision_score = stats_df["decision_clean"].map({"tko_ko":2, "submission":2, 
-                                                         "decision":1, "other":0})
-        stats_df["ordinal_fighter_result"] = result_sign * decision_score
-
-        submission_score = stats_df["decision_clean"].map({"submission":1, "decision":0, 
-                                                    "other":0, "tko_ko":0})
-        tko_ko_score = stats_df["decision_clean"].map({"submission":0, "decision":0, 
-                                                    "other":0, "tko_ko":1})
-        decision_score = stats_df["decision_clean"].map({"submission":0, "decision":1, 
-                                                    "other":0, "tko_ko":0})
-        finish_score = stats_df["decision_clean"].map({"submission":1, "decision":0, 
-                                                    "other":0, "tko_ko":1})
-        stats_df["submission_fighter_result"] = result_sign * submission_score
-        stats_df["tko_ko_fighter_result"] = result_sign * tko_ko_score
-        stats_df["decision_fighter_result"] = result_sign * decision_score
-        stats_df["finish_fighter_result"] = result_sign * finish_score
-        stats_df["distance_strikes_landed"] = stats_df[["SDBL", "SDHL", "SDLL"]].sum(1, skipna=False)
-        stats_df["clinch_strikes_landed"] = stats_df[["SCBL", "SCHL", "SCLL"]].sum(1, skipna=False)
-        stats_df["ground_strikes_landed"] = stats_df[["SGBL", "SGHL", "SGLL"]].sum(1, skipna=False)
-        stats_df["standing_strikes"] = stats_df["distance_strikes_landed"] + stats_df["clinch_strikes_landed"]
-        sm_success = (stats_df["decision_clean"] == 'submission') & (stats_df["FighterResult"] == 'W')
-        stats_df["SM_success"] = sm_success.fillna(False).astype(int)
-        # how many strikes result in a guy getting knocked down?
-        stats_df["KD_power"] = stats_df["KD"] / stats_df["standing_strikes"]
-        stats_df = self._add_fail_feats(stats_df)
-        self._merge_opp_df(stats_df)
-        # self._add_rate_feats()
-        return self.full_stats_df
-
-    @staticmethod
-    def _add_fail_feats(stats_df):
-        stat_prefix_cols = [
-            "SCB", "SCH", "SCL", 
-            "SDB", "SDH", "SDL", 
-            "SGB", "SGH", "SGL", 
-            "SS", "TD", "TS",
-        ]
-        stats_df = stats_df.copy()
-        for prefix in stat_prefix_cols:
-            attempt_col = prefix + "A"
-            success_col = prefix + "L"
-            fail_col = prefix + "_fails"
-            fails = stats_df[attempt_col] - stats_df[success_col]
-            stats_df[fail_col] = np.maximum(0, fails)
-        stats_df["SM_fails"] = np.maximum(0, stats_df["SM"] - stats_df["SM_success"])
-        return stats_df
-
-    @staticmethod
-    def _add_rate_feats(stats_df):
-        stat_cols = [
-            'TSL', 'TSA', 'SSL',
-            'SSA', #'TSL-TSA', 
-            'KD', #'%BODY', '%HEAD', '%LEG', 
-            'SCBL',
-            'SCBA', 'SCHL', 'SCHA', 'SCLL', 'SCLA', 'RV', 'SR', 'TDL', 'TDA', 'TDS',
-            'TK ACC', 'SGBL', 'SGBA', 'SGHL', 'SGHA', 'SGLL', 'SGLA', 'AD', 'ADTB',
-            'ADHG', 'ADTM', 'ADTS', 'SM', 'SDBL', 'SDBA', 'SDHL',
-            'SDHA', 'SDLL', 'SDLA',
-            #'time_seconds',
-            'distance_strikes_landed', 'clinch_strikes_landed', 'standing_strikes',
-            #'KD_power', 
-            'ground_strikes_landed'
-        ]
-        stats_df = stats_df.copy()
-        for col in stat_cols:
-            rate_col = "{}_per_sec".format(col)
-            stat_rate = stats_df[col] / stats_df["time_seconds"]
-            stats_df[rate_col] = stat_rate
-            
-            rate_col = "{}_per_sec_opp".format(col)
-            stat_rate = stats_df[(col+"_opp")] / stats_df["time_seconds"]
-            stats_df[rate_col] = stat_rate
-        return stats_df
-
-    def _merge_opp_df(self, stats_df, opp_stats=None):
-        if opp_stats is None:
-            opp_stats = [
-                'TSL', 'TSA', 'SSL',
-                'SSA', 'TSL-TSA', 'KD', '%BODY', '%HEAD', '%LEG', 'SCBL',
-                'SCBA', 'SCHL', 'SCHA', 'SCLL', 'SCLA', 'RV', 'SR', 'TDL', 'TDA', 'TDS',
-                'TK ACC', 'SGBL', 'SGBA', 'SGHL', 'SGHA', 'SGLL', 'SGLA', 'AD', 'ADTB',
-                'ADHG', 'ADTM', 'ADTS', 'SM', 'SDBL', 'SDBA', 'SDHL',
-                'SDHA', 'SDLL', 'SDLA',
-                'time_seconds',
-                'distance_strikes_landed', 'clinch_strikes_landed', 'standing_strikes',
-                'KD_power', 'ground_strikes_landed', 'SM_success',
-
-                'SCB_fails', 'SCH_fails', 'SCL_fails', 'SDB_fails', 'SDH_fails', 'SDL_fails',
-                'SGB_fails', 'SGH_fails', 'SGL_fails', 'SS_fails', 'TD_fails', 'TS_fails',
-                'SM_fails',
-            ]
-
-        opp_df = stats_df[["FighterID", "OpponentID", "Date"] + opp_stats]
-
-        full_stats_df = stats_df.merge(
-            opp_df, 
-            left_on=["FighterID", "OpponentID", "Date"],
-            right_on=["OpponentID", "FighterID", "Date"],
-            how="left",
-            suffixes=("", "_opp")
-        )
-        full_stats_df["time_seconds"] = full_stats_df["time_seconds"].fillna(full_stats_df["time_seconds_opp"])
-        full_stats_df = full_stats_df.drop(columns=["time_seconds_opp"])
-        self.full_stats_df = full_stats_df
-        return self.full_stats_df
-
-
-class SimpleFeatureExtractor(object):
-    """
-    Extracts things like the following:
-    * simple fighter-level features like number of fights, number of fights in the ufc
-    * simple relative fighter features like diff in number of fights
-    * maybe things that we'll want to make Elo forecasts for, eg difference in sqrt(SSL)
-    """
+class RealEloWrapper(object):
     
-    def __init__(self, stats_df):
-        self.raw_stats_df = stats_df
-        self.trans_df = None
-        
-    def fit_transform_all(self):
-        dd_df = self._dedupe_fights(self.raw_stats_df)
-        self.trans_df = self._get_simple_features(dd_df)
-        return self.trans_df
-        
-        
-    def _dedupe_fights(self, df):
-        temp_df = df.assign(
-            fighterA = df[["FighterID", "OpponentID"]].max(1),
-            fighterB = df[["FighterID", "OpponentID"]].min(1),
-            fighter_is_A = df["FighterID"] > df["OpponentID"],
-        )
-        return temp_df.drop_duplicates(subset=["Date", "fighterA", "fighterB"]) \
-                      .sort_values(["Date", "fighterA", "fighterB"])
-    
-    def _get_simple_features(self, df):
-        # simple things that i needn't get from the fighter stats page
-        # eg number of fights, t_since_last_fight
-        df = df.assign(
-            is_ufc=df["Event"].fillna("").str.contains("UFC"),
-            Date=pd.to_datetime(df["Date"]),
-        )
-        df = df.sort_values("Date")
-        fighters = set(df["FighterID"]) | set(df["OpponentID"])
-        total_fight_counter = pd.Series(0, index=sorted(fighters))
-        total_ufc_fight_counter = pd.Series(0, index=sorted(fighters))
-        last_fight_counter = pd.Series(pd.to_datetime("1900-01-01"), index=sorted(fighters))
-        # arbitrary date to start with - like starting with np.inf
-        first_fight_dt_map = pd.Series(pd.to_datetime("2100-01-01"), index=sorted(fighters))
-        feat_df_list = [] # concat this at the end
-        for curr_dt, grp in tqdm(df.groupby("Date")):
-            fid_vec = grp["FighterID"]
-            oid_vec = grp["OpponentID"]
-            is_ufc = grp["is_ufc"]
-            first_fight_dt_map[fid_vec] = np.minimum(pd.Series(curr_dt, index=fid_vec), 
-                                                     first_fight_dt_map[fid_vec])
-            first_fight_dt_map[oid_vec] = np.minimum(pd.Series(curr_dt, index=oid_vec), 
-                                                     first_fight_dt_map[oid_vec])
-            feat_df_list.append(pd.DataFrame({
-                "FighterID":fid_vec,
-                "OpponentID":oid_vec,
-                "Date":grp["Date"],
-                "total_fights":fid_vec.map(total_fight_counter),
-                "total_ufc_fights":fid_vec.map(total_ufc_fight_counter),
-                "t_since_last_fight":(curr_dt - fid_vec.map(last_fight_counter)).dt.days,
-                "t_since_first_fight":(curr_dt - fid_vec.map(first_fight_dt_map)).dt.days,
-                "total_fights_opp":oid_vec.map(total_fight_counter),
-                "total_ufc_fights_opp":oid_vec.map(total_ufc_fight_counter),
-                "t_since_last_fight_opp":(curr_dt - oid_vec.map(last_fight_counter)).dt.days,
-                "t_since_first_fight_opp":(curr_dt - oid_vec.map(first_fight_dt_map)).dt.days,
-            }))
-            # if somehow this guy takes multiple fights in the same day,
-            # just count it as one fight. 
-            total_fight_counter[fid_vec] += 1
-            total_fight_counter[oid_vec] += 1
-            last_fight_counter[fid_vec] = curr_dt
-            last_fight_counter[oid_vec] = curr_dt
-            ufc_grp = grp.loc[is_ufc]
-            total_ufc_fight_counter[ufc_grp["FighterID"]] += 1
-            total_ufc_fight_counter[ufc_grp["OpponentID"]] += 1
-            # make sure unknown_fighter_id stays unknown!
-            total_fight_counter[unknown_fighter_id] = 0
-            total_ufc_fight_counter[unknown_fighter_id] = 0
-            last_fight_counter[unknown_fighter_id] = pd.to_datetime("1900-01-01")
-            first_fight_dt_map[unknown_fighter_id] = curr_dt
-        feat_df = pd.concat(feat_df_list)
-        # cap t_since_last_fight, which can go really long
-        # note that because last_fight_counter is initialized to a really early date,
-        # this will handle the case where total_fights=0
-        feat_df["t_since_last_fight"] = np.minimum(2*365, feat_df["t_since_last_fight"])
-        feat_df["t_since_last_fight_opp"] = np.minimum(2*365, feat_df["t_since_last_fight_opp"])
-        # compute diffs (idk how i want to --- this...)
-        feat_df["t_since_last_fight_diff"] = (feat_df["t_since_last_fight"] - 
-                                              feat_df["t_since_last_fight_opp"])
-        feat_df["t_since_last_fight_log_diff"] = (np.log(feat_df["t_since_last_fight"]) - 
-                                                  np.log(feat_df["t_since_last_fight_opp"]))
-        feat_df["total_fights_diff"] = (feat_df["total_fights"] - 
-                                        feat_df["total_fights_opp"])
-        feat_df["total_fights_sqrt_diff"] = (np.sqrt(feat_df["total_fights"]) - 
-                                            np.sqrt(feat_df["total_fights_opp"]))
-        feat_df["total_ufc_fights_diff"] = (feat_df["total_ufc_fights"] - 
-                                            feat_df["total_ufc_fights_opp"])
-        feat_df["total_ufc_fights_sqrt_diff"] = (np.sqrt(feat_df["total_ufc_fights"]) - 
-                                                 np.sqrt(feat_df["total_ufc_fights_opp"]))
-        feat_df["t_since_first_fight_diff"] = (feat_df["t_since_first_fight"] -
-                                               feat_df["t_since_first_fight_opp"])
-        feat_df["t_since_first_fight_log_diff"] = (np.log(feat_df["t_since_first_fight"]) -
-                                                   np.log(feat_df["t_since_first_fight_opp"]))
-        return feat_df
-
-
-class EloFeatureExtractor(object):
-
-    """
-    real_elo_target_cols: real-valued fight outcomes. 
-        eg my ordinal fight outcome (-2,-1,0,1,2) for loss by finish, loss by dec, draw, etc
-    diff_elo_target_cols: forecast difference in sqrts of two fight stats
-        eg SSL, TDS, SGHL. sqrt is there because Poisson and istg it helps!
-    binary_elo_target_cols: pretty much just Win/Loss
-    """
-    
-    def __init__(self, stats_df, real_elo_target_cols, diff_elo_target_cols,
-                 binary_elo_target_cols, elo_alphas, sqrt_diff_flag = True):
-        self.raw_stats_df = stats_df
-        self.real_elo_target_cols = real_elo_target_cols
-        self.diff_elo_target_cols = diff_elo_target_cols
-        self.binary_elo_target_cols = binary_elo_target_cols
-        self.elo_target_names = sorted(diff_elo_target_cols + 
-                                       binary_elo_target_cols +
-                                       real_elo_target_cols)
+    def __init__(self, elo_alphas:dict):
+        # elo_alphas maps target_col --> alpha
         self.elo_alphas = elo_alphas
-        self.elo_df = None
-        self.elo_df_dict = None
-        self.sqrt_diff_flag = sqrt_diff_flag
-    
-    def fit_transform_all(self):
-        # get the target cols
-        # get the elo forecasts
-        elo_target_df = self._get_diff_elo_targets(self.raw_stats_df)
-        self.elo_df = self._get_elo_target_preds(elo_target_df)
-        return self.elo_df
-    
-    def _get_diff_elo_targets(self, df):
-        elo_target_df = df.copy()
-        for col in self.diff_elo_target_cols:
-            if self.sqrt_diff_flag:
-                # TODO I should make this easier to customize...
-                elo_target_df[col+"_diff"] = np.sqrt(df[col]) - np.sqrt(df[col+"_opp"])
-            else:
-                elo_target_df[col+"_diff"] = df[col] - df[col+"_opp"]
-            #elo_target_df[col+"_sqrt_diff"] = np.sqrt(df[col]) - np.sqrt(df[col+"_opp"])
-        return elo_target_df
+        self.fitted_elo_estimators = dict()
         
-    def _get_elo_target_preds(self, df):
-        # calculate rolling elo scores
-        elo_dfs = {
-            feat:None for feat in self.elo_target_names
-        }
-        df = df.sort_values(["Date", "FighterID", "OpponentID"])
-        
-        for feature in self.elo_target_names:
-            curr_ep = None
-            temp_df = None
-            alpha = self.elo_alphas[feature]
-            if feature in self.binary_elo_target_cols:
-                curr_ep = LogisticEwmaPowers(target_col=feature, alpha=alpha)
-                temp_df = df.loc[df[feature].notnull()]
-            if feature in self.diff_elo_target_cols:
-                curr_ep = EwmaPowers(target_col=feature+"_diff", alpha=alpha)
-                temp_df = df.loc[df[feature+"_diff"].notnull()]
-            if feature in self.real_elo_target_cols:
-                curr_ep = EwmaPowers(target_col=feature, alpha=alpha)
-                temp_df = df.loc[df[feature].notnull()]
-            curr_ep.fit(temp_df)
-            curr_ep.elo_df["oldEloDiff"] = curr_ep.elo_df["oldFighterElo"] - curr_ep.elo_df["oldOpponentElo"]
-            elo_dfs[feature] = curr_ep.elo_df
-        self.elo_df_dict = elo_dfs
-        # bundle up all these elo features into a single dataframe
-        join_cols = ["FighterID", "OpponentID", "Date"]
-        full_elo_df = None
-        for feature in self.elo_target_names:
-            right_df = elo_dfs[feature].rename(columns={
-                col: col+feature for col in elo_dfs[feature].columns
-                if col not in join_cols
-            })
-            if full_elo_df is None:
-                full_elo_df = right_df
-            else:
-                full_elo_df = full_elo_df.merge(
-                    right_df,
-                    how="inner",
-                    on=join_cols,
-                )
-        return full_elo_df
+    def fit_transform_all(self, df):
+        elo_feature_list = []
+        elo_feat_df = df[["espn_fight_id"]].copy()
+        for target_col, alpha in self.elo_alphas.items():
+            print(f"getting elo features for {target_col}")
+            elo_estimator = RealEloEstimator(target_col)
+            elo_estimator.fit(df)
+            self.fitted_elo_estimators[target_col] = elo_estimator
+            elo_feat_df[f"pred_{target_col}"] = elo_estimator.elo_feature_df["pred_target"]
+        return elo_feat_df
+    
+    def fit_predict(self, train_df, test_df):
+        train_feat_df = train_df[["espn_fight_id"]].copy()
+        test_feat_df = test_df[["espn_fight_id"]].copy()
+        for target_col, alpha in self.elo_alphas.items():
+            print(f"getting elo features for {target_col}")
+            elo_estimator = RealEloEstimator(target_col, alpha)
+            elo_estimator.fit(train_df)
+            self.fitted_elo_estimators[target_col] = elo_estimator
+            train_feat_df[f"pred_{target_col}"] = elo_estimator.elo_feature_df["pred_target"]
+            test_feat_df[f"pred_{target_col}"] = elo_estimator.predict(test_df)["pred_target"]
+        return train_feat_df, test_feat_df
 
 
-class BioFeatureExtractor(object):
+class BinaryEloWrapper(object):
     
-    def __init__(self, bio_df):
-        self.bio_df = bio_df
-        self.aug_bio_df = self._clean_bio_df(bio_df)
+    def __init__(self, elo_alphas:dict):
+        # elo_alphas maps target_col --> alpha
+        self.elo_alphas = elo_alphas
+        self.fitted_elo_estimators = dict()
         
-    def _clean_bio_df(self, bio_df):
-        # parse weights, impute
-        bio_df = bio_df.assign(DOB=pd.to_datetime(bio_df["DOB"]))
-        bio_df["clean_weight_class"] = bio_df["WT Class"].fillna("missing") \
-            .str.lower() \
-            .str.split("weight").str[0] \
-            .str.strip()
-        
-        avg_class_wts = bio_df.groupby("clean_weight_class")["WeightPounds"].mean()
-        # idk seems reasonable
-        avg_class_wts["light middle"] = 175.0 
-        # avg from googling a handful of fighters in the open weight class
-        # zane frazier=230, kazuyuki fujita=245, gerard gordeau=216, paulo cesar silva=386, paul herrera=185
-        avg_class_wts["open"] = 250
-        # avg from googling again
-        # robert duvalle=295,sean o'haire=265,jonathan wiezorek=250
-        avg_class_wts["super heavy"] = 270
-        # leave this alone tbh - i'll just assume he's the same weight as the other guy
-        avg_class_wts["missing"] = np.nan
-        
-        bio_df["clean_weight"] = bio_df["WeightPounds"] \
-            .fillna(bio_df["clean_weight_class"].map(avg_class_wts))
-        
-        imp_mean = IterativeImputer(random_state=0)
-        # using clean_weight instead of WeightPounds because WT Class gives us some info about that
-        imp_body_dims = imp_mean.fit_transform(bio_df[["ReachInches", "clean_weight", "HeightInches"]])
-        imp_body_dims = pd.DataFrame(imp_body_dims, columns=["imp_reach", "imp_weight", "imp_height"])
-        
-        bio_df["all_dims_missing"] = bio_df[["ReachInches","clean_weight","HeightInches"]].isnull().all(1)
-        bio_df = bio_df.join(imp_body_dims)
-        self.aug_bio_df = bio_df
-        return self.aug_bio_df
-        
-        
-    def fit_transform_all(self, feat_df):
-        # feat_df: dataframe of fighter and opponent features
-        sub_bio = self.aug_bio_df[["FighterID", "DOB", "all_dims_missing", 
-                                   "imp_reach", "imp_weight", "imp_height"]]
+    def fit_transform_all(self, df):
+        elo_feature_list = []
+        elo_feat_df = df[["espn_fight_id"]].copy()
+        for target_col, alpha in self.elo_alphas.items():
+            print(f"getting elo features for {target_col}")
+            elo_estimator = BinaryEloEstimator(target_col)
+            elo_estimator.fit(df)
+            self.fitted_elo_estimators[target_col] = elo_estimator
+            elo_feat_df[f"pred_{target_col}"] = elo_estimator.elo_feature_df["pred_target"]
+            elo_feat_df[f"pred_{target_col}_logit"] = logit(elo_feat_df[f"pred_{target_col}"])
+        return elo_feat_df
+    
+    def fit_predict(self, train_df, test_df):
+        train_feat_df = train_df[["espn_fight_id"]].copy()
+        test_feat_df = test_df[["espn_fight_id"]].copy()
+        for target_col, alpha in self.elo_alphas.items():
+            print(f"getting elo features for {target_col}")
+            elo_estimator = BinaryEloEstimator(target_col, alpha)
+            elo_estimator.fit(train_df)
+            self.fitted_elo_estimators[target_col] = elo_estimator
+            train_feat_df[f"pred_{target_col}"] = elo_estimator.elo_feature_df["pred_target"]
+            test_feat_df[f"pred_{target_col}"] = elo_estimator.predict(test_df)["pred_target"]
+            train_feat_df[f"pred_{target_col}_logit"] = logit(train_feat_df[f"pred_{target_col}"])
+            test_feat_df[f"pred_{target_col}_logit"]  = logit(test_feat_df[f"pred_{target_col}"])
+        return train_feat_df, test_feat_df
 
-        feat_df = feat_df.merge(
-            sub_bio,
-            on=["FighterID"],
-            how="left"
-        ).merge(
-            sub_bio.rename(columns={"FighterID":"OpponentID"}),
-            on=["OpponentID"],
-            how="left",
-            suffixes=("", "_opp")
+
+class PcaEloWrapper(object):
+    
+    def __init__(self, n_pca, target_cols, alpha, conditional_var_col="gender"):
+        self.n_pca = n_pca
+        self.target_cols = target_cols
+        self.alpha = alpha
+        self.conditional_var_col = conditional_var_col
+        self.pca = PCA(whiten=True)
+        self.elo_alphas = {f"PC_{i}":alpha for i in range(n_pca)}
+        self.elo_wrapper = EloWrapper(self.elo_alphas)
+        
+    def _fit_transform_pca(self, df):
+        # okay first we double the df (targets had better be centered at 0 or we have a problem)
+        df_sub = df.dropna(subset=self.target_cols)
+        temp_pca_train_data = pd.concat([df_sub[self.target_cols], 
+                                         -df_sub[self.target_cols]]).reset_index(drop=True)
+        pca_train_data = None
+        if self.conditional_var_col is None:
+            # no heteroscedasticity
+            scale_factor = temp_pca_train_data[self.target_cols].std()
+            temp_pca_train_data[self.target_cols] /= scale_factor
+            self.pca.fit(temp_pca_train_data)
+            pca_train_data = self.pca.transform(df_sub[self.target_cols] / scale_factor)
+        else:
+            # conditional heteroscedasticity
+            var_id_vec = pd.concat([df_sub[self.conditional_var_col], 
+                                    df_sub[self.conditional_var_col]]).reset_index(drop=True)
+            conditional_scale_map = temp_pca_train_data.groupby(var_id_vec).std()
+            temp_conditional_scale = conditional_scale_map.loc[var_id_vec].values
+            temp_pca_train_data[self.target_cols] /= temp_conditional_scale
+            self.pca.fit(temp_pca_train_data)
+            conditional_scale = conditional_scale_map.loc[df_sub[self.conditional_var_col]].values
+            pca_train_data = self.pca.transform(df_sub[self.target_cols] / conditional_scale)
+        pca_cols = ["PC_{}".format(i) for i in range(pca_train_data.shape[1])]
+        pca_df = pd.DataFrame(pca_train_data, columns=pca_cols)
+        pca_df["espn_fight_id"] = df_sub["espn_fight_id"].values
+        pca_df["espn_fighter_id"] = df_sub["espn_fighter_id"].values
+        pca_df["espn_opponent_id"] = df_sub["espn_opponent_id"].values
+        pca_df["Date"] = df_sub["Date"].values
+        return pca_df
+        
+    def fit_transform_all(self, df):
+        pca_df = self._fit_pca(df)
+        pca_df = df[["espn_fight_id", "espn_fighter_id", "espn_opponent_id"]].merge(
+            pca_df, how="left", on=["espn_fight_id", "espn_fighter_id", "espn_opponent_id"],
         )
+        return self.elo_wrapper.fit_transform_all(pca_df)
 
-        feat_df["age"] = (feat_df["Date"] - feat_df["DOB"]).dt.days / 365
-        feat_df["age_opp"] = (feat_df["Date"] - feat_df["DOB_opp"]).dt.days / 365
-        # effect of age on fighter ability is probably not linear but w/e
-        feat_df["age_diff"] = (feat_df["DOB"] - feat_df["DOB_opp"]).dt.days / 365
-        feat_df["age_diff"] = feat_df["age_diff"].fillna(0)
-
-        feat_df["reach_diff"] = feat_df["imp_reach"] - feat_df["imp_reach_opp"]
-        feat_df["weight_diff"] = feat_df["imp_weight"] - feat_df["imp_weight_opp"]
-        feat_df["log_weight_diff"] = np.log(feat_df["imp_weight"]) - np.log(feat_df["imp_weight_opp"])
-        feat_df["height_diff"] = feat_df["imp_height"] - feat_df["imp_height_opp"]
-
-        zero_imp_inds = feat_df["all_dims_missing"] | feat_df["all_dims_missing_opp"]
-        feat_df.loc[zero_imp_inds, ["reach_diff", "weight_diff", 
-                                    "height_diff", "log_weight_diff"]] = 0
-
-        return feat_df
-
-
-class MoneyLineFeatureExtractor(object):
-
-    def __init__(self, ml_df):
-        self.ml_df = ml_df 
-
-    def fit_transform_all(self):
-        ml_df = self.ml_df 
-        ml_df["Date"] = pd.to_datetime(ml_df["Date"])
-        ml_df["p_fighter"] = self.parse_american_odds(ml_df["FighterOpen"])
-        ml_df["p_opponent"] = self.parse_american_odds(ml_df["OpponentOpen"])
-        ml_df["p_fighter_midpoint"] = (ml_df["p_fighter"] + 1 - ml_df["p_opponent"]) / 2
-        denom = (ml_df["p_fighter"] + ml_df["p_opponent"])
-        ml_df["p_fighter_implied"] = ml_df["p_fighter"] / denom 
-
-        # features about closing moneyline odds
-        p_o_close_left  = self.parse_american_odds(ml_df["OpponentCloseLeft"])
-        p_f_close_left  = self.parse_american_odds(ml_df["FighterCloseLeft"])
-        p_o_close_right = self.parse_american_odds(ml_df["OpponentCloseRight"])
-        p_f_close_right = self.parse_american_odds(ml_df["FighterCloseRight"])
-
-        ml_df["p_fighter_close_min"] = np.minimum(p_f_close_left, p_f_close_right)
-        ml_df["p_fighter_close_max"] = np.maximum(p_f_close_left, p_f_close_right)
-        ml_df["p_fighter_close_mid"] = (ml_df["p_fighter_close_min"] + ml_df["p_fighter_close_max"]) / 2
-        ml_df["p_opponent_close_min"] = np.minimum(p_o_close_left, p_o_close_right)
-        ml_df["p_opponent_close_max"] = np.maximum(p_o_close_left, p_o_close_right)
-        ml_df["p_opponent_close_mid"] = (ml_df["p_opponent_close_min"] + ml_df["p_opponent_close_max"]) / 2
-
-        p_f_consensus = ml_df["p_fighter_close_mid"] / ml_df[["p_fighter_close_mid", "p_opponent_close_mid"]].sum(1)
-        ml_df["p_fighter_close_consensus"] = p_f_consensus
-
-        def inv_sigmoid(x): # just log odds
-            return np.log(x) - np.log(1 - x)
-
-        close_logit = inv_sigmoid(ml_df["p_fighter_close_consensus"])
-        open_logit = inv_sigmoid(ml_df["p_fighter_implied"])
-        ml_df["ml_logit_mvmt"] = close_logit - open_logit
-
-        self.ml_df = ml_df 
-        return ml_df 
-
-    def parse_american_odds(self, x:pd.Series):
-        fav_inds = x <= 0
-        dog_inds = x > 0
-        y = pd.Series(0, index=x.index)
-        y.loc[fav_inds] = -1 * x / (100 - x)
-        y.loc[dog_inds] = 100 / (100 + x)
-        return y
-
-
-class EasyPipeline(object):
-
-    def __init__(self, stats_df, bio_df, ml_df, gender_df):
-        DP = DataPreprocessor(stats_df)
-        self.pp_df = DP.get_preprocessed_df()
-        self.pp_df = self.add_fight_gender(self.pp_df, gender_df)
-
-        simple_fe = SimpleFeatureExtractor(self.pp_df)
-        simple_fe.fit_transform_all()
-        simple_feat_df = simple_fe.trans_df
-
-        bio_fe = BioFeatureExtractor(bio_df)
-        feat_df = bio_fe.fit_transform_all(simple_feat_df)
-
-        ml_fe = MoneyLineFeatureExtractor(ml_df)
-        self.ml_feature_df = ml_fe.fit_transform_all()
-
-        self.all_but_elo_df = feat_df.merge(
-            self.ml_feature_df, 
-            on=["Date", "FighterID", "OpponentID"],
-            how="inner"
+    def fit_predict(self, train_df, test_df):
+        train_pca_df = self._fit_transform_pca(train_df)
+        train_pca_df = train_df[["espn_fight_id", "espn_fighter_id", "espn_opponent_id"]].merge(
+            train_pca_df, how="left", on=["espn_fight_id", "espn_fighter_id", "espn_opponent_id"],
         )
-        self.all_but_elo_df = self.add_fight_gender(self.all_but_elo_df, gender_df)
-
-    def add_fight_gender(self, fight_df, gender_df):
-        gender_map = gender_df.set_index("FighterID").to_dict()["gender"]
-
-        f_gender = fight_df["FighterID"].map(gender_map)
-        o_gender = fight_df["OpponentID"].map(gender_map)
-        f_gender = f_gender.fillna(o_gender)
-
-        return fight_df.assign(gender=f_gender)
-
-    def fit_transform_all(self, elo_alphas, real_elo_target_cols, 
-            diff_elo_target_cols, binary_elo_target_cols, sqrt_diff_flag = True):
-        win_col = self.pp_df["FighterResult"].map({"W":1.,"L":0.,"D":np.nan})
-        stats_df = self.pp_df.assign(Win=win_col)
-        # have to join with ml_feature_df here to get ml_logit_mvmt
-        stats_df = stats_df.merge(self.ml_feature_df, on=["Date", "FighterID", "OpponentID"], how="inner")
-        elo_fe = EloFeatureExtractor(stats_df, 
-                                    elo_alphas = elo_alphas,
-                                    real_elo_target_cols = real_elo_target_cols, 
-                                    diff_elo_target_cols = diff_elo_target_cols,
-                                    binary_elo_target_cols = binary_elo_target_cols, 
-                                    sqrt_diff_flag = sqrt_diff_flag)
-        elo_fe.fit_transform_all()
-
-        feat_ml_df = elo_fe.elo_df.merge(
-            self.all_but_elo_df,
-            on=["FighterID", "OpponentID", "Date"],
-            how="inner"
-        )
-        return feat_ml_df
-
-def extract_all_features(stats_df, bio_df, ml_df, real_elo_target_cols, 
-        diff_elo_target_cols, binary_elo_target_cols, elo_alphas):
-
-    EP = EasyPipeline(stats_df, bio_df, ml_df)
-    feat_ml_df = EP.fit_transform_all(elo_alphas, real_elo_target_cols,
-                                    diff_elo_target_cols, binary_elo_target_cols)
-    return feat_ml_df
-
-    # DP = DataPreprocessor(stats_df)
-    # pp_df = DP.get_preprocessed_df()
-
-    # simple_fe = SimpleFeatureExtractor(pp_df)
-    # simple_fe.fit_transform_all()
-
-    # win_col = pp_df["FighterResult"].map({"W":1.,"L":0.,"D":np.nan})
-    # elo_fe = EloFeatureExtractor(pp_df.assign(Win=win_col), 
-    #                             elo_alphas = elo_alphas,
-    #                             real_elo_target_cols = real_elo_target_cols, 
-    #                             diff_elo_target_cols = diff_elo_target_cols,
-    #                             binary_elo_target_cols = binary_elo_target_cols)
-    # elo_fe.fit_transform_all()
-
-    # feat_df = elo_fe.elo_df.merge(
-    #     simple_fe.trans_df,
-    #     on=["FighterID", "OpponentID", "Date"],
-    #     how="inner"
-    # )
-
-    # bio_fe = BioFeatureExtractor(bio_df)
-    # feat_df = bio_fe.fit_transform_all(feat_df)
-
-    # ml_fe = MoneyLineFeatureExtractor(ml_df)
-    # ml_df = ml_fe.fit_transform_all()
-
-    # feat_ml_df = feat_df.merge(
-    #     ml_df, 
-    #     on=["Date", "FighterID", "OpponentID"],
-    #     how="inner"
-    # )
-
-    # return feat_ml_df
-
+        return self.elo_wrapper.fit_predict(train_pca_df, test_df)
     
+    def get_fighter_career_elos(self, fighter_id):
+        pass
