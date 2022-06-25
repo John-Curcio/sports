@@ -2,6 +2,8 @@
 import pandas as pd 
 from model.mma_elo_model import RealEloEstimator, BinaryEloEstimator
 from sklearn.decomposition import PCA
+from scipy.special import expit, logit
+
 
 class RealEloWrapper(object):
     
@@ -77,7 +79,7 @@ class PcaEloWrapper(object):
         self.conditional_var_col = conditional_var_col
         self.pca = PCA(whiten=True)
         self.elo_alphas = {f"PC_{i}":alpha for i in range(n_pca)}
-        self.elo_wrapper = EloWrapper(self.elo_alphas)
+        self.elo_wrapper = RealEloWrapper(self.elo_alphas)
         
     def _fit_transform_pca(self, df):
         # okay first we double the df (targets had better be centered at 0 or we have a problem)
@@ -110,7 +112,7 @@ class PcaEloWrapper(object):
         return pca_df
         
     def fit_transform_all(self, df):
-        pca_df = self._fit_pca(df)
+        pca_df = self._fit_transform_pca(df)
         pca_df = df[["espn_fight_id", "espn_fighter_id", "espn_opponent_id"]].merge(
             pca_df, how="left", on=["espn_fight_id", "espn_fighter_id", "espn_opponent_id"],
         )

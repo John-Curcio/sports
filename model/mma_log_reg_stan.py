@@ -4,6 +4,7 @@ import hashlib
 import numpy as np 
 import pandas as pd 
 from sklearn.decomposition import PCA
+from scipy.special import expit, logit
 
 code = """
 
@@ -49,12 +50,6 @@ generated quantities {
 }
 """
 
-def logit(x):
-    return np.log(x) - np.log(1-x)
-
-def inv_logit(x):
-    return 1 / (1 + np.exp(-x))
-
 
 class BaseStanModel(object):
     
@@ -83,9 +78,13 @@ class BaseStanModel(object):
 
 class SimpleSymmetricModel(BaseStanModel):
         
-    def __init__(self, feat_cols, beta_prior_std=0.1, mcmc=False, num_chains=4, num_samples=1000):
+    def __init__(self, feat_cols, beta_prior_std=0.1, target_col="targetWin",
+            p_fighter_implied_col="p_fighter_implied",
+            mcmc=False, num_chains=4, num_samples=1000):
         self.feat_cols = feat_cols
         self.beta_prior_std = float(beta_prior_std)
+        self.target_col = target_col 
+        self.p_fighter_implied_col = p_fighter_implied_col
         self.code = code
         self.scale_ = None
         self.fit = None
@@ -105,10 +104,10 @@ class SimpleSymmetricModel(BaseStanModel):
         X_train = train_df[feat_cols] / scale_
         X_test = test_df[feat_cols] / scale_
 
-        y_train = train_df["targetWin"]
+        y_train = train_df[self.target_col]
 
-        ml_train = logit(train_df["p_fighter_implied"])
-        ml_test = logit(test_df["p_fighter_implied"])
+        ml_train = logit(train_df[self.p_fighter_implied_col])
+        ml_test = logit(test_df[self.p_fighter_implied_col])
         
         X_ml_train = np.concatenate([X_train, ml_train.values.reshape(-1,1)], axis=1)
         X_ml_test = np.concatenate([X_test, ml_test.values.reshape(-1,1)], axis=1)
