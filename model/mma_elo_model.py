@@ -5,7 +5,7 @@ import seaborn as sns
 from tqdm import tqdm 
 from sklearn.metrics import log_loss, accuracy_score, mean_squared_error, mean_absolute_error
 from sklearn.preprocessing import OneHotEncoder
-from scipy.special import expit as sigmoid, logit as inv_sigmoid
+from scipy.special import expit, logit
 
 unknown_fighter_id = "2557037" # "2557037/unknown-fighter"
 
@@ -230,7 +230,7 @@ class AccEloEstimator(object):
         y = df[self.landed_col].fillna(0) + df[self.landed_col+"_opp"].fillna(0)
         n = df[self.attempt_col].fillna(0) + df[self.attempt_col+"_opp"].fillna(0)
         p = y.sum() / n.sum()
-        self._power_intercept = inv_sigmoid(p)
+        self._power_intercept = logit(p)
     
     def _fit_workhorse(self, df:pd.DataFrame):
         # drop rows where everything is missing
@@ -267,10 +267,10 @@ class AccEloEstimator(object):
             opponent_offense_elos[i] = self._fighter_offense_powers * opponent_id_vec.T
             opponent_defense_elos[i] = self._fighter_defense_powers * opponent_id_vec.T
             
-            p_fighter_hat = sigmoid(fighter_offense_elos[i] - 
+            p_fighter_hat = expit(fighter_offense_elos[i] - 
                                     opponent_defense_elos[i] + 
                                     self._power_intercept)
-            p_opponent_hat = sigmoid(opponent_offense_elos[i] - 
+            p_opponent_hat = expit(opponent_offense_elos[i] - 
                                      fighter_defense_elos[i] + 
                                      self._power_intercept)
             
@@ -307,10 +307,10 @@ class AccEloEstimator(object):
             opponent_offense_elo=opponent_offense_elos,
             opponent_defense_elo=opponent_defense_elos,
             # predicted targets
-            p_fighter_hat = sigmoid(fighter_offense_elos - 
+            p_fighter_hat = expit(fighter_offense_elos - 
                                     opponent_defense_elos + 
                                     self._power_intercept),
-            p_opponent_hat = sigmoid(opponent_offense_elos - 
+            p_opponent_hat = expit(opponent_offense_elos - 
                                      fighter_defense_elos + 
                                      self._power_intercept),
             # updated fighter, opponent elos
@@ -374,8 +374,8 @@ class AccEloEstimator(object):
             elo_df[["fighter_offense_elo", "opponent_offense_elo"]].isnull().mean()
         assert elo_df[["fighter_defense_elo", "opponent_defense_elo"]].isnull().any().any() == False, \
             elo_df[["fighter_defense_elo", "opponent_defense_elo"]].isnull().mean()
-        elo_df["p_figher_hat"] = sigmoid(elo_df["fighter_offense_elo"] - elo_df["opponent_defense_elo"])
-        elo_df["p_opponent_hat"] = sigmoid(elo_df["opponent_offense_elo"] - elo_df["fighter_defense_elo"])
+        elo_df["p_figher_hat"] = expit(elo_df["fighter_offense_elo"] - elo_df["opponent_defense_elo"])
+        elo_df["p_opponent_hat"] = expit(elo_df["opponent_offense_elo"] - elo_df["fighter_defense_elo"])
         return elo_df
         
     def fit(self, df:pd.DataFrame):
@@ -406,10 +406,10 @@ class AccEloEstimator(object):
         opponent_offense_elos = self._fighter_offense_powers * opponent_id_mat.T
         opponent_defense_elos = self._fighter_defense_powers * opponent_id_mat.T
 
-        p_fighter_hat = sigmoid(fighter_offense_elos - 
+        p_fighter_hat = expit(fighter_offense_elos - 
                                 opponent_defense_elos + 
                                 self._power_intercept)
-        p_opponent_hat = sigmoid(opponent_offense_elos - 
+        p_opponent_hat = expit(opponent_offense_elos - 
                                  fighter_defense_elos + 
                                  self._power_intercept)
         return pd.DataFrame({
