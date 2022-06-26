@@ -227,9 +227,14 @@ class AccEloEstimator(object):
         return self._fighter_encoder.transform(fighter_ids.values.reshape(-1,1))
     
     def _fit_power_intercept(self, df:pd.DataFrame):
-        y = df[self.landed_col].fillna(0) + df[self.landed_col+"_opp"].fillna(0)
-        n = df[self.attempt_col].fillna(0) + df[self.attempt_col+"_opp"].fillna(0)
-        p = y.sum() / n.sum()
+        keep_inds_fighter = df[[self.landed_col, self.attempt_col]].notnull().all(1)
+        keep_inds_opponent = df[[self.landed_col+"_opp", self.attempt_col+"_opp"]].notnull().all(1)
+
+        y = df.loc[keep_inds_fighter, self.landed_col].sum() + \
+            df.loc[keep_inds_opponent, self.landed_col+"_opp"].sum()
+        n = df.loc[keep_inds_fighter, self.attempt_col].sum() + \
+            df.loc[keep_inds_opponent, self.attempt_col+"_opp"].sum()
+        p = y / n
         self._power_intercept = logit(p)
     
     def _fit_workhorse(self, df:pd.DataFrame):
@@ -276,16 +281,23 @@ class AccEloEstimator(object):
             
             # delta is oriented in the direction of the fighter i guess
             # update the fighter's offense and opponent's defense
-            w = self.alpha * np.sqrt(n_fighter[i] / (p_fighter_hat * (1 - p_fighter_hat)))
-            delta_p_fighter_landed = w * (p_fighter[i] - p_fighter_hat)
+            delta_p_fighter_landed = self.alpha * (y_fighter[i] - (n_fighter[i] * p_fighter_hat))
             self._fighter_offense_powers += (0.5 * delta_p_fighter_landed * fighter_id_vec)
             self._fighter_defense_powers -= (0.5 * delta_p_fighter_landed * opponent_id_vec)
-
-            w = self.alpha * np.sqrt(n_opponent[i] / (p_opponent_hat * (1 - p_opponent_hat)))
-            delta_p_opponent_landed = w * (p_opponent[i] - p_opponent_hat)
-            
+            delta_p_opponent_landed = self.alpha * (y_opponent[i] - (n_opponent[i] * p_opponent_hat))
             self._fighter_offense_powers += (0.5 * delta_p_opponent_landed * opponent_id_vec)
             self._fighter_defense_powers -= (0.5 * delta_p_opponent_landed * fighter_id_vec)
+
+            # w = self.alpha * np.sqrt(n_fighter[i] / (p_fighter_hat * (1 - p_fighter_hat)))
+            # delta_p_fighter_landed = w * (p_fighter[i] - p_fighter_hat)
+            # self._fighter_offense_powers += (0.5 * delta_p_fighter_landed * fighter_id_vec)
+            # self._fighter_defense_powers -= (0.5 * delta_p_fighter_landed * opponent_id_vec)
+
+            # w = self.alpha * np.sqrt(n_opponent[i] / (p_opponent_hat * (1 - p_opponent_hat)))
+            # delta_p_opponent_landed = w * (p_opponent[i] - p_opponent_hat)
+            
+            # self._fighter_offense_powers += (0.5 * delta_p_opponent_landed * opponent_id_vec)
+            # self._fighter_defense_powers -= (0.5 * delta_p_opponent_landed * fighter_id_vec)
             
             fighter_offense_deltas[i] = delta_p_fighter_landed
             opponent_offense_deltas[i] = delta_p_opponent_landed
@@ -374,7 +386,7 @@ class AccEloEstimator(object):
             elo_df[["fighter_offense_elo", "opponent_offense_elo"]].isnull().mean()
         assert elo_df[["fighter_defense_elo", "opponent_defense_elo"]].isnull().any().any() == False, \
             elo_df[["fighter_defense_elo", "opponent_defense_elo"]].isnull().mean()
-        elo_df["p_figher_hat"] = expit(elo_df["fighter_offense_elo"] - elo_df["opponent_defense_elo"])
+        elo_df["p_fighter_hat"] = expit(elo_df["fighter_offense_elo"] - elo_df["opponent_defense_elo"])
         elo_df["p_opponent_hat"] = expit(elo_df["opponent_offense_elo"] - elo_df["fighter_defense_elo"])
         return elo_df
         

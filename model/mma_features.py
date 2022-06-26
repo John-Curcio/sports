@@ -1,6 +1,6 @@
 # import numpy as np 
 import pandas as pd 
-from model.mma_elo_model import RealEloEstimator, BinaryEloEstimator
+from model.mma_elo_model import RealEloEstimator, BinaryEloEstimator, AccEloEstimator
 from sklearn.decomposition import PCA
 from scipy.special import expit, logit
 
@@ -17,7 +17,7 @@ class RealEloWrapper(object):
         elo_feat_df = df[["espn_fight_id"]].copy()
         for target_col, alpha in self.elo_alphas.items():
             print(f"getting elo features for {target_col}")
-            elo_estimator = RealEloEstimator(target_col)
+            elo_estimator = RealEloEstimator(target_col, alpha=alpha)
             elo_estimator.fit(df)
             self.fitted_elo_estimators[target_col] = elo_estimator
             elo_feat_df[f"pred_{target_col}"] = elo_estimator.elo_feature_df["pred_target"]
@@ -28,7 +28,7 @@ class RealEloWrapper(object):
         test_feat_df = test_df[["espn_fight_id"]].copy()
         for target_col, alpha in self.elo_alphas.items():
             print(f"getting elo features for {target_col}")
-            elo_estimator = RealEloEstimator(target_col, alpha)
+            elo_estimator = RealEloEstimator(target_col, alpha=alpha)
             elo_estimator.fit(train_df)
             self.fitted_elo_estimators[target_col] = elo_estimator
             train_feat_df[f"pred_{target_col}"] = elo_estimator.elo_feature_df["pred_target"]
@@ -48,7 +48,7 @@ class BinaryEloWrapper(object):
         elo_feat_df = df[["espn_fight_id"]].copy()
         for target_col, alpha in self.elo_alphas.items():
             print(f"getting elo features for {target_col}")
-            elo_estimator = BinaryEloEstimator(target_col)
+            elo_estimator = BinaryEloEstimator(target_col, alpha=alpha)
             elo_estimator.fit(df)
             self.fitted_elo_estimators[target_col] = elo_estimator
             elo_feat_df[f"pred_{target_col}"] = elo_estimator.elo_feature_df["pred_target"]
@@ -60,7 +60,7 @@ class BinaryEloWrapper(object):
         test_feat_df = test_df[["espn_fight_id"]].copy()
         for target_col, alpha in self.elo_alphas.items():
             print(f"getting elo features for {target_col}")
-            elo_estimator = BinaryEloEstimator(target_col, alpha)
+            elo_estimator = BinaryEloEstimator(target_col, alpha=alpha)
             elo_estimator.fit(train_df)
             self.fitted_elo_estimators[target_col] = elo_estimator
             train_feat_df[f"pred_{target_col}"] = elo_estimator.elo_feature_df["pred_target"]
@@ -127,3 +127,59 @@ class PcaEloWrapper(object):
     
     def get_fighter_career_elos(self, fighter_id):
         pass
+
+
+class AccEloWrapper(object):
+    
+    def __init__(self, elo_alphas:dict):
+        # elo_alphas maps (landed_col, attempt_col) --> alpha
+        self.elo_alphas = elo_alphas
+        self.fitted_elo_estimators = dict()
+        
+    def fit_transform_all(self, df):
+        elo_feature_list = []
+        elo_feat_df = df[["espn_fight_id"]].copy()
+        for (landed_col, attempt_col), alpha in self.elo_alphas.items():
+            target_col = f"{landed_col}_{attempt_col}"
+            print(f"getting elo features for {landed_col}/{attempt_col}")
+            elo_estimator = AccEloEstimator(landed_col=landed_col, attempt_col=attempt_col, alpha=alpha)
+            elo_estimator.fit(df)
+            self.fitted_elo_estimators[target_col] = elo_estimator
+            
+            elo_feat_df[f"pred_p_{target_col}_diff"] = (
+                elo_estimator.elo_feature_df["p_fighter_hat"] -
+                elo_estimator.elo_feature_df["p_opponent_hat"]
+            )
+            elo_feat_df[f"pred_logit_p_{target_col}_diff"] = (
+                logit(elo_estimator.elo_feature_df["p_fighter_hat"]) -
+                logit(elo_estimator.elo_feature_df["p_opponent_hat"])
+            )
+        return elo_feat_df
+    
+    def fit_predict(self, train_df, test_df):
+        train_feat_df = train_df[["espn_fight_id"]].copy()
+        test_feat_df = test_df[["espn_fight_id"]].copy()
+        for (landed_col, attempt_col), alpha in self.elo_alphas.items():
+            target_col = f"{landed_col}_{attempt_col}"
+            print(f"getting elo features for {landed_col}/{attempt_col}")
+            elo_estimator = AccEloEstimator(landed_col=landed_col, attempt_col=attempt_col, alpha=alpha)
+            elo_estimator.fit(train_df)
+            self.fitted_elo_estimators[target_col] = elo_estimator
+            
+            train_feat_df[f"pred_p_{target_col}_diff"] = (
+                elo_estimator.elo_feature_df["p_fighter_hat"] -
+                elo_estimator.elo_feature_df["p_opponent_hat"]
+            )
+            train_feat_df[f"pred_logit_p_{target_col}_diff"] = (
+                logit(elo_estimator.elo_feature_df["p_fighter_hat"]) -
+                logit(elo_estimator.elo_feature_df["p_opponent_hat"])
+            )
+            pred_df = elo_estimator.predict(test_df)
+            display(pred_df)
+            test_feat_df[f"pred_p_{target_col}_diff"] = (
+                pred_df["pred_p_fighter_landed"] - pred_df["pred_p_opponent_landed"]
+            )
+            test_feat_df[f"pred_logit_p_{target_col}_diff"] = (
+                logit(pred_df["pred_p_fighter_landed"]) - logit(pred_df["pred_p_opponent_landed"])
+            )
+        return train_feat_df, test_feat_df

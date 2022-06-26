@@ -194,8 +194,13 @@ class Preprocessor(object):
         # SM_fails
         sm_finish = df["decision_clean"] == "submission"
         sm_landed_fighter  = (sm_finish & (df["FighterResult"] == "W")).astype(int)
+        df["SML"] = sm_landed_fighter
+        df["SMA"] = np.maximum(df["SM"], df["SML"])
         df["SM_fail"] = np.maximum(df["SM"] - sm_landed_fighter, 0)
+        
         sm_landed_opponent = (sm_finish & (df["FighterResult"] == "L")).astype(int)
+        df["SML_opp"] = sm_landed_opponent
+        df["SMA_opp"] = np.maximum(df["SM_opp"], df["SML_opp"])
         df["SM_fail_opp"] = np.maximum(df["SM_opp"] - sm_landed_opponent, 0)
         
         attempt_cols = [
