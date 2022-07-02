@@ -80,7 +80,7 @@ class UfcDataCleaner(object):
         self.clean_events_df = event_clean_df.drop(columns=["Time"])
 
     def _parse_descriptions(self):
-        self.clean_desc_df = self.desc_df.rename(columns={
+        df = self.desc_df.rename(columns={
             "Weight": "weight_bout",
             "Method": "method_description",
             "Round": "round_description",
@@ -88,7 +88,36 @@ class UfcDataCleaner(object):
             "Time Format": "time_format",
             "Referee": "referee",
             "Details": "details_description",
-        })
+        }).copy()
+        # need to do some serious work to figure out the duration of the fight
+        max_time = pd.Series(np.nan, index=df.index)
+        time_dur = pd.Series(np.nan, index=df.index)
+        
+        time_into_round = df["time_description"].replace("-", "0:0").fillna("0:0").str.split(":")
+        seconds_into_round = (
+            time_into_round.str[0].astype(int) * 60 +
+            time_into_round.str[1].astype(int)
+        )
+        # parsing the time format
+        # prep by overwriting some special cases
+        time_format = df["time_format"].str.lower()
+        time_format.loc[time_format == "unlimited rnd"] = "unlimited rnd (15)"
+        time_format.loc[time_format == "no time limit"] = "1 round (999999)"
+        unlimited_rnd_inds = time_format.str.startswith("unlimited rnd")
+        unlimited_rnd_lens = time_format.loc[unlimited_rnd_inds].str.split("(").str[1].str[:-1]
+        # just impute some really big number of rounds lol
+        time_format.loc[unlimited_rnd_inds] = unlimited_rnd_lens.apply(
+            lambda x: "50 rnd (" + "-".join(50 * [x]) + ")"
+        )
+        round_formats = time_format.str.split("(").str[1].str[:-1]\
+            .apply(lambda x: [int(s) for s in x.split("-")])
+        max_time = round_formats.apply(np.sum) * 60
+        round_index = (df["round_description"] - 1)
+        time_dur = pd.Series(
+            [np.sum(round_format[:final_round]) * 60 for final_round, round_format 
+            in zip(round_index, round_formats)]
+        ) + seconds_into_round
+        self.clean_desc_df = df.assign(max_time=max_time, time_dur=time_dur)
 
 
     def parse_all(self):

@@ -12,7 +12,8 @@ class Preprocessor(object):
         self.pp_df = None
         
     def preprocess(self):
-        df = self.assign_fight_time(self.raw_df)
+        # df = self.assign_fight_time(self.raw_df)
+        df = self.raw_df
         df = self.assign_fc(df)
         df = self.assign_parsed_decision(df)
         df = self.assign_weight(df)
@@ -87,7 +88,7 @@ class Preprocessor(object):
             n_ufc_fights = df.loc[inds, "is_ufc"].cumsum() # .shift().fillna(0)
             t_since_first_fight = (df.loc[inds, "Date"] - first_fight).dt.days
             t_since_last_fight = df.loc[inds, "Date"].diff().dt.days
-            total_time_in_cage = df.loc[inds, "time_seconds"].cumsum().shift().fillna(0)
+            # total_time_in_cage = df.loc[inds, "time_seconds"].cumsum().shift().fillna(0)
             min_weight = df.loc[inds, "fight_weight"].cummin()
             max_weight = df.loc[inds, "fight_weight"].cummax()
             prev_weight = df.loc[inds, "fight_weight"].shift()
@@ -98,7 +99,7 @@ class Preprocessor(object):
                 "n_ufc_fights": n_ufc_fights,
                 "t_since_first_fight": t_since_first_fight,
                 "t_since_prev_fight": t_since_last_fight,
-                "total_time_in_cage": total_time_in_cage,
+                # "total_time_in_cage": total_time_in_cage,
                 "min_weight": min_weight,
                 "max_weight": max_weight,
                 "prev_weight": prev_weight,
@@ -114,16 +115,16 @@ class Preprocessor(object):
         )
         return df
         
-    @staticmethod
-    def assign_fight_time(df):
-        time_into_round = df["Time"].replace("-", "0:0").fillna("0:0").str.split(":")
-        n_rounds = df["Rnd"].replace("-", np.nan).astype(float)
-        n_seconds = (
-            (n_rounds - 1) * 5 * 60 +
-            time_into_round.str[0].astype(int) * 60 +
-            time_into_round.str[1].astype(int)
-        )
-        return df.assign(time_seconds = n_seconds)
+    # @staticmethod
+    # def assign_fight_time(df):
+    #     time_into_round = df["Time"].replace("-", "0:0").fillna("0:0").str.split(":")
+    #     n_rounds = df["Rnd"].replace("-", np.nan).astype(float)
+    #     n_seconds = (
+    #         (n_rounds - 1) * 5 * 60 +
+    #         time_into_round.str[0].astype(int) * 60 +
+    #         time_into_round.str[1].astype(int)
+    #     )
+    #     return df.assign(time_seconds = n_seconds)
         
     @staticmethod
     def assign_weight(df):
