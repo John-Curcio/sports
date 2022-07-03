@@ -193,7 +193,7 @@ class HyperParamTester(object):
         df["SMA_opp"] = np.maximum(df["SM_opp"], df["SML_opp"])
         self.landed_cols = ["SML", "TDL", "KD", "TDS"]
         self.attempted_cols = ["SMA", "TDA", "SSL", "TDL"]
-        return df#.sample(5*10**3) # DELETE ME
+        return df.query("Date <= '2021-01-01'")
 
 if __name__ == "__main__":
     mod = SimpleSymmetricModel(feat_cols=None, target_col="win_target", 
