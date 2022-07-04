@@ -16,21 +16,26 @@ class HyperParamTester(object):
 
     def test_hp_range(self, n_draws):
         results = []
-        for _ in range(n_draws):
-            pca_elo_alpha = np.random.uniform(0, 1)
-            binary_elo_alpha = np.random.uniform(0, 1)
-            acc_elo_alpha = np.random.uniform(0, 1)
-            n_pca = np.random.choice(range(6, 20))
-            print(f"""testing the following params:
-            pca elo alpha: {pca_elo_alpha}
-            bin elo alpha: {binary_elo_alpha}
-            acc elo alpha: {acc_elo_alpha}
-            n pca components: {n_pca}""")
-            curr_result = self.test_hp(
-                pca_elo_alpha, binary_elo_alpha, acc_elo_alpha, n_pca
-            )
-            print(curr_result)
-            results.append(curr_result)
+        # for _ in range(n_draws):
+        #     pca_elo_alpha = np.random.uniform(0, 1)
+        #     binary_elo_alpha = np.random.uniform(0, 1)
+        #     acc_elo_alpha = np.random.uniform(0, 1)
+        #     n_pca = np.random.choice(range(6, 20))
+        elo_alpha_vals = np.linspace(0.25, 1, n_draws+2)[1:-1]
+        for pca_elo_alpha in elo_alpha_vals:
+            for binary_elo_alpha in elo_alpha_vals:
+                for acc_elo_alpha in elo_alpha_vals:
+                    for n_pca in [6, 9, 12, 15]:
+                        print(f"""testing the following params:
+                        pca elo alpha: {pca_elo_alpha}
+                        bin elo alpha: {binary_elo_alpha}
+                        acc elo alpha: {acc_elo_alpha}
+                        n pca components: {n_pca}""")
+                        curr_result = self.test_hp(
+                            pca_elo_alpha, binary_elo_alpha, acc_elo_alpha, n_pca
+                        )
+                        print(curr_result)
+                        results.append(curr_result)
         return pd.DataFrame(results)
     
     def test_hp(self, pca_elo_alpha=0.5, binary_elo_alpha=0.5, acc_elo_alpha=0.5, n_pca=16):
@@ -202,4 +207,4 @@ if __name__ == "__main__":
     hp_tester = HyperParamTester(mod)
     result_df = hp_tester.test_hp_range(n_draws=30)
     print(result_df.sort_values("in_sample_xce"))
-    result_df.to_csv("data/hp_results.csv", index=False)
+    result_df.to_csv("data/hp_results_grid.csv", index=False)
