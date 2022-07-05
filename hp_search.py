@@ -205,6 +205,6 @@ if __name__ == "__main__":
                                 p_fighter_implied_col="p_fighter_open_implied",
                                 beta_prior_std=1.0, mcmc=False)
     hp_tester = HyperParamTester(mod)
-    result_df = hp_tester.test_hp_range(n_draws=30)
+    result_df = hp_tester.test_hp_range(n_draws=5)
     print(result_df.sort_values("in_sample_xce"))
     result_df.to_csv("data/hp_results_grid.csv", index=False)
