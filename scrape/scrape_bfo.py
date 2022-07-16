@@ -86,7 +86,7 @@ class FighterScraper(BasePageScraper):
         if self.data is None:
             self.get_html()
         # self.data["url"] = self.url
-        soup = BeautifulSoup(self.raw_html)
+        soup = BeautifulSoup(self.raw_html, "lxml")
         tbody = soup.find("tbody")
         urls = [link.get("href") for link in tbody.find_all("a")]
         fighter_urls = [("https://www.bestfightodds.com"+u) 
@@ -97,7 +97,7 @@ class FighterScraper(BasePageScraper):
     def get_event_urls(self):
         if self.data is None:
             self.get_html()
-        soup = BeautifulSoup(self.raw_html)
+        soup = BeautifulSoup(self.raw_html, "lxml")
         event_cells = soup.find_all("tr", {"class":"event-header item-mobile-only-row"})
         event_hrefs = [u.find("a").get("href") for u in event_cells]
         self.event_urls = {("https://www.bestfightodds.com"+u) for u in event_hrefs}
@@ -107,7 +107,7 @@ class FighterScraper(BasePageScraper):
         if self.data is None:
             self.get_html()
         odds_df_rows = []
-        soup = BeautifulSoup(self.raw_html)
+        soup = BeautifulSoup(self.raw_html, "lxml")
         opp_cells = soup.find_all("th", {"class": "oppcell"})
         opp_cells = [u.find("a").get("href") for u in opp_cells]
         opp_cell_pairs = list(zip(opp_cells[::2], opp_cells[1::2]))
@@ -161,7 +161,7 @@ class EventScraper(BasePageScraper):
         if self.data is None:
             self.get_html()
         # self.data["url"] = self.url
-        soup = BeautifulSoup(self.raw_html)
+        soup = BeautifulSoup(self.raw_html, "lxml")
         tbody = soup.find("tbody")
         urls = [link.get("href") for link in tbody.find_all("a")]
         fighter_urls = [("https://www.bestfightodds.com"+u) 
