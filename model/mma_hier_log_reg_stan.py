@@ -2,7 +2,8 @@ import pystan
 import numpy as np 
 import pandas as pd 
 from sklearn.decomposition import PCA
-from model.mma_log_reg_stan import SimpleSymmetricModel, logit, inv_logit
+from model.mma_log_reg_stan import SimpleSymmetricModel
+from scipy.special import expit, logit
 
 hier_code = """
 
@@ -61,10 +62,15 @@ generated quantities {
 
 class HierSymmetricModel(SimpleSymmetricModel):
 
-    def __init__(self, feat_cols, beta_prior_std=0.1, intra_group_std=0.1, 
-                 mcmc=False, num_chains=4, num_samples=1000):
-        super().__init__(feat_cols, beta_prior_std, mcmc, num_chains, num_samples)
+    def __init__(self, feat_cols, beta_prior_std=0.1, target_col="targetWin",
+            p_fighter_implied_col="p_fighter_implied",
+            gender_col="gender", intra_group_std=0.1,
+            mcmc=False, num_chains=4, num_samples=1000):
+        super().__init__(feat_cols, beta_prior_std, target_col,
+            p_fighter_implied_col,
+            mcmc, num_chains, num_samples)
         self.intra_group_std = float(intra_group_std)
+        self.gender_col = gender_col
         self.code = hier_code
 
     def fit_predict(self, train_df, test_df, feat_cols=None):
@@ -78,16 +84,18 @@ class HierSymmetricModel(SimpleSymmetricModel):
         X_train = train_df[feat_cols] / scale_
         X_test = test_df[feat_cols] / scale_
 
-        y_train = train_df["targetWin"]
+        y_train = train_df[self.target_col]
 
-        ml_train = logit(train_df["p_fighter_implied"])
-        ml_test = logit(test_df["p_fighter_implied"])
+        ml_train = logit(train_df[self.p_fighter_implied_col])
+        ml_test = logit(test_df[self.p_fighter_implied_col])
         
         X_ml_train = np.concatenate([X_train, ml_train.values.reshape(-1,1)], axis=1)
         X_ml_test = np.concatenate([X_test, ml_test.values.reshape(-1,1)], axis=1)
 
-        is_m_train = train_df["gender"].map({"M":1, "W":0})
-        is_m_test = test_df["gender"].map({"M":1, "W":0})
+        is_m_train = train_df[self.gender_col]
+        is_m_test = test_df[self.gender_col]
+        # is_m_train = train_df["gender"].map({"M":1, "W":0})
+        # is_m_test = test_df["gender"].map({"M":1, "W":0})
         
         data = {
             "n": train_df.shape[0],

@@ -15,78 +15,107 @@ def score_log_loss(model, test_df):
     y_true = test_df["targetWin"]
     return log_loss(y_pred=y_pred, y_true=y_true)
 
-def score_kelly_returns(model, test_df, max_bankroll_fraction=1):
-    y_pred = model.predict(test_df)
-    KB = KellyBet(y_pred, test_df, max_bankroll_fraction)
-    total_return = KB.returns_df["total_return"].prod()
-    return total_return
+# def score_kelly_returns(model, test_df, max_bankroll_fraction=1):
+#     y_pred = model.predict(test_df)
+#     KB = KellyBet(y_pred, test_df, max_bankroll_fraction)
+#     total_return = KB.returns_df["total_return"].prod()
+#     return total_return
 
-class KellyBet(object):
-    """
-    This is an unrealistic simulation
-    But my model is profitable if this shows profit
-    """
 
-    def __init__(self, y_pred, test_df, max_bankroll_fraction=1, 
-            p_fighter_wager_col="p_fighter", p_opponent_wager_col="p_opponent"):
-        # b is % of wager gained on a win (not counting original wager)
-        # https://en.wikipedia.org/wiki/Kelly_criterion#Gambling_formula
-        self.p_fighter_wager_col = p_fighter_wager_col
-        self.p_opponent_wager_col = p_opponent_wager_col
-        b_fighter = (1/test_df[self.p_fighter_wager_col]) - 1
-        b_opponent = (1/test_df[self.p_opponent_wager_col]) - 1
-        
-        kelly_bet_fighter = y_pred + ((y_pred - 1) / b_fighter)
-        kelly_bet_opponent = (1 - y_pred) + ((1 - y_pred - 1) / b_opponent)
-        kelly_bet_fighter = np.maximum(0, kelly_bet_fighter)
-        kelly_bet_opponent = np.maximum(0, kelly_bet_opponent)
-        # can't bet more than the max bankroll fraction on one fight
-        kelly_bet_fighter = np.minimum(max_bankroll_fraction, kelly_bet_fighter)
-        kelly_bet_opponent = np.minimum(max_bankroll_fraction, kelly_bet_opponent)
-        
-        f_won = test_df["targetWin"] == 1
-        o_won = test_df["targetWin"] == 0
-        
-        fighter_return = (kelly_bet_fighter * b_fighter * f_won) - \
-            (kelly_bet_fighter * o_won)
-        opponent_return = (kelly_bet_opponent * b_opponent * o_won) - \
-            (kelly_bet_opponent * f_won)
-        
-        total_returns = 1 + fighter_return + opponent_return
-        self.returns_df = test_df[["FighterID", "OpponentID", "Date"]].assign(
-            p_fighter=y_pred,
-            # p_fighter_implied=test_df["p_fighter_implied"],
-            b_fighter=b_fighter,
-            b_opponent=b_opponent,
-            kelly_bet_fighter=kelly_bet_fighter,
-            kelly_bet_opponent=kelly_bet_opponent,
-            fighter_won=f_won,
-            opponent_won=o_won,
-            total_return=total_returns,
+class MultiKellyPM(object):
+
+    def __init__(self, pred_df, max_bankroll_fraction=1, groupby_col="Date",
+        fighter_ml_col="FighterOpen", opponent_ml_col="OpponentOpen"):
+        """
+        pred_df: pd.DataFrame with columns y_pred, Date, win_target, 
+            `fighter_ml_col`, `opponent_ml_col`, espn_fight_id, espn_fighter_id, 
+            espn_opponent_id
+        max_bankroll_fraction: maximum % of bankroll to risk on any one fight
+        fighter_ml_col: column of pred_df containing money line for fighter
+        opponent_ml_col: column of pred_df containing money line for opponent
+        """
+        self.pred_df = pred_df.assign(
+            fighter_payout=self.get_payouts_from_moneylines(pred_df[fighter_ml_col]),
+            opponent_payout=self.get_payouts_from_moneylines(pred_df[opponent_ml_col]),
         )
+        self.max_bankroll_fraction = max_bankroll_fraction
+        self.groupby_col = groupby_col
+        self.fight_return_df = None
+        self.event_return_df = None
 
-    def plot_diagnostics(self):
-        returns_df = self.returns_df 
+    @staticmethod
+    def get_payouts_from_moneylines(ml_vec):
+        is_fav = ml_vec < 0
+        is_dog = ml_vec > 0
+        payout = pd.Series(np.nan, index=ml_vec.index)
+        payout.loc[is_fav] = -100 / ml_vec.loc[is_fav]
+        payout.loc[is_dog] = ml_vec.loc[is_dog] / 100
+        return payout 
 
-        plt.plot(returns_df.index, returns_df["total_return"])
-        plt.title("Kelly returns over fights")
-        plt.axhline(y=1.0)
-        plt.xticks(rotation=45)
-        plt.show()
+    def get_all_returns(self):
+        returns_df_list = []
+        for curr_date, grp in self.pred_df.groupby(self.groupby_col):
+            weight_df = self.get_portfolio_weights(grp)
+            return_df = weight_df.assign(win_target=grp["win_target"])
+            fighter_won = return_df["win_target"] == 1
+            opponent_won = return_df["win_target"] == 0
+            # calculating returns
+            # in the case of a draw, money is returned, and return is 0
+            return_df["fighter_return"] = (
+                (return_df["fighter_bet"] * return_df["fighter_payout"] * fighter_won )
+                - (return_df["fighter_bet"] * opponent_won)
+            )
+            return_df["opponent_return"] = (
+                (return_df["opponent_bet"] * return_df["opponent_payout"] * opponent_won )
+                - (return_df["opponent_bet"] * fighter_won)
+            )
+            return_df["return"] = (
+                return_df["fighter_return"] + return_df["opponent_return"]
+            )
+            return_df["Date"] = curr_date
+            returns_df_list.append(return_df)
+        fight_return_df = pd.concat(returns_df_list).reset_index(drop=True)
+        self.fight_return_df = fight_return_df
+        self.event_return_df = fight_return_df.groupby(self.groupby_col)["return"].sum()
+        return self.event_return_df.reset_index()
 
-        plt.plot(returns_df.index, returns_df["total_return"].cumprod())
-        plt.title("Portfolio value over fights \
-        (imaginary world where returns per fight compound)")
-        plt.axhline(y=1.0)
-        plt.xticks(rotation=45)
-        plt.show()
+    def get_portfolio_weights(self, df):
+        b_fighter = df["fighter_payout"]
+        b_opponent = df["opponent_payout"]
+        p_fighter = df["y_pred"]
+        p_opponent = 1 - df["y_pred"]
+        kelly_bet_fighter = np.maximum(0, p_fighter - (p_opponent / b_fighter))
+        kelly_bet_opponent = np.maximum(0, p_opponent - (p_fighter / b_opponent))
+        
+        # i want to check that i'm never betting on both guys
+        check_vec = (kelly_bet_fighter > 0) & (kelly_bet_opponent > 0)
+        assert not check_vec.any()
 
-        returns_df = returns_df.groupby("Date")["total_return"].prod().reset_index()
-        returns_df["cum_return"] = returns_df["total_return"].cumprod()
-        sns.lineplot(x="Date", y="cum_return", data=returns_df)
-        plt.title("Portfolio value over time \
-        (imaginary world where returns per fight compound)")
-        plt.axhline(y=1.0)
+        # size bets proportional to kelly criterion for one bet
+        n_bets = (kelly_bet_fighter > 0).sum() + (kelly_bet_opponent > 0).sum()
+        fighter_bet = np.minimum(self.max_bankroll_fraction, 
+                                 kelly_bet_fighter / n_bets).fillna(0)
+        opponent_bet = np.minimum(self.max_bankroll_fraction, 
+                                  kelly_bet_opponent / n_bets).fillna(0)
+        # again, check that i'm never betting on both guys
+        assert fighter_bet.sum() + opponent_bet.sum() < 1
+        return df[["espn_fight_id", self.groupby_col, "y_pred",
+                   "espn_fighter_id", "espn_opponent_id", 
+                   "fighter_payout", "opponent_payout"]].assign(
+            fighter_bet = fighter_bet,
+            opponent_bet = opponent_bet,
+        )
+    
+    @staticmethod
+    def plot_diagnostics(event_return_df, x_col="Date"):
+        event_return_df["portfolio_value"] = (event_return_df["return"] + 1).cumprod()
+        sns.lineplot(
+            x=x_col, y="portfolio_value",
+            data=event_return_df
+        )
+        avg_return = event_return_df["return"].mean()
+        plt.title("Portfolio value over time - assume returns compound by date\
+\naverage return: %.4f"%avg_return)
         plt.xticks(rotation=45)
         plt.show()
 
