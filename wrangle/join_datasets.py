@@ -132,6 +132,7 @@ class IsomorphismFinder(object):
             "aoriqileng": "aori qileng",
             "robert sanchez": "roberto sanchez",
             "patrick smith": "patrick trey smith",
+            "aleksandra albu": "alexandra albu",
         }
         to_replace, value = zip(*replace_dict.items()) # gets keys and values of dict respectively
         names = names.fillna("").str.strip().str.lower()\
@@ -234,6 +235,7 @@ manual_espn_bfo_mapping = {
     '4306125': '/fighters/Gabe-Green-10506',
     '4914568': '/fighters/Pete-Rodrigue-13104',
     '3091146': '/fighters/Toninho-Gavinho-11224',
+    '3074493': '/fighters/Alexandra-Albu-7261',
 }
 
 def join_ufc_and_espn(ufc_df, espn_df, ufc_espn_fighter_id_map):
@@ -310,7 +312,7 @@ def join_espn_and_bfo(espn_df, bfo_df, espn_bfo_fighter_id_map):
         .drop(columns=["n_missing"])
     # okay, now i deliberately add duplicates. Want to make sure the fighter
     # and opponent are matched with their respective odds!
-    bfo_df2 = bfo_df.rename(columns={
+    rename_dict = {
         "FighterID": "OpponentID",
         "FighterOpen": "OpponentOpen",
         "FighterCloseLeft": "OpponentCloseLeft",
@@ -321,7 +323,12 @@ def join_espn_and_bfo(espn_df, bfo_df, espn_bfo_fighter_id_map):
         "OpponentCloseLeft": "FighterCloseLeft",
         "OpponentCloseRight": "FighterCloseRight",
         "p_opponent_open_implied": "p_fighter_open_implied",
-    })
+    }
+    for market in ["5D", "Bet365", "BetMGM", "BetRivers", "BetWay", 
+        "Caesars", "DraftKings", "FanDuel", "PointsBet", "Ref", "Unibet"]:
+        rename_dict[market + "_fighter"] = market + "_opponent"
+        rename_dict[market + "_opponent"] = market + "_fighter"
+    bfo_df2 = bfo_df.rename(columns=rename_dict)
     bfo_duped_df = pd.concat([bfo_df, bfo_df2]).reset_index(drop=True)
     return espn_df.merge(bfo_duped_df, 
                          on=["fight_id", "Date", "FighterID", "OpponentID"], 
@@ -339,7 +346,7 @@ def main():
         "FighterID_opp": "OpponentID",
         "FighterName_opp": "OpponentName",
     })
-    bfo_df = pd.read_csv("data/bfo_fighter_odds.csv")
+    bfo_df = pd.read_csv("data/bfo_open_and_close_odds.csv")
     for df in [espn_df, ufc_df, bfo_df]:
         df["Date"] = pd.to_datetime(df["Date"])
         for col in ["FighterName", "OpponentName"]:
@@ -391,6 +398,7 @@ def main():
         '/fighters/Gabriel-Green-6587': '/fighters/Gabe-Green-10506',
         '/fighters/Philip-Rowe-9379': '/fighters/Phil-Rowe-9898',
         '/fighters/Phillip-Rowe-11319': '/fighters/Phil-Rowe-9898',
+        '/fighters/Aleksandra-Albu-5539': '/fighters/Alexandra-Albu-7261',
     }
 
     bfo_df_clean = bfo_df.assign(

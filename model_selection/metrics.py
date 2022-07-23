@@ -25,7 +25,7 @@ def score_log_loss(model, test_df):
 class MultiKellyPM(object):
 
     def __init__(self, pred_df, max_bankroll_fraction=1, groupby_col="Date",
-        fighter_ml_col="FighterOpen", opponent_ml_col="OpponentOpen"):
+        fighter_ml_col="FighterOpen", opponent_ml_col="OpponentOpen", parse_ml=True):
         """
         pred_df: pd.DataFrame with columns y_pred, Date, win_target, 
             `fighter_ml_col`, `opponent_ml_col`, espn_fight_id, espn_fighter_id, 
@@ -34,10 +34,16 @@ class MultiKellyPM(object):
         fighter_ml_col: column of pred_df containing money line for fighter
         opponent_ml_col: column of pred_df containing money line for opponent
         """
-        self.pred_df = pred_df.assign(
-            fighter_payout=self.get_payouts_from_moneylines(pred_df[fighter_ml_col]),
-            opponent_payout=self.get_payouts_from_moneylines(pred_df[opponent_ml_col]),
-        )
+        if parse_ml:
+            self.pred_df = pred_df.assign(
+                fighter_payout=self.get_payouts_from_moneylines(pred_df[fighter_ml_col]),
+                opponent_payout=self.get_payouts_from_moneylines(pred_df[opponent_ml_col]),
+            )
+        else:
+            self.pred_df = pred_df.rename(columns={
+                fighter_ml_col: "fighter_payout",
+                opponent_ml_col: "opponent_payout",
+            })
         self.max_bankroll_fraction = max_bankroll_fraction
         self.groupby_col = groupby_col
         self.fight_return_df = None
@@ -48,13 +54,16 @@ class MultiKellyPM(object):
         is_fav = ml_vec < 0
         is_dog = ml_vec > 0
         payout = pd.Series(np.nan, index=ml_vec.index)
+        # favorite: you have to bet X to get a $100 payout, so payout is 100 / X
         payout.loc[is_fav] = -100 / ml_vec.loc[is_fav]
+        # underdog: you bet $100 to get X payout, so payout is X / 100
         payout.loc[is_dog] = ml_vec.loc[is_dog] / 100
         return payout 
 
     def get_all_returns(self):
         returns_df_list = []
-        for curr_date, grp in self.pred_df.groupby(self.groupby_col):
+        temp_pred_df = self.pred_df.dropna(subset=["fighter_payout", "opponent_payout"])
+        for curr_date, grp in temp_pred_df.groupby(self.groupby_col):
             weight_df = self.get_portfolio_weights(grp)
             return_df = weight_df.assign(win_target=grp["win_target"])
             fighter_won = return_df["win_target"] == 1
@@ -80,8 +89,8 @@ class MultiKellyPM(object):
         return self.event_return_df.reset_index()
 
     def get_portfolio_weights(self, df):
-        b_fighter = df["fighter_payout"]
-        b_opponent = df["opponent_payout"]
+        b_fighter = df["fighter_payout"].fillna(0)
+        b_opponent = df["opponent_payout"].fillna(0)
         p_fighter = df["y_pred"]
         p_opponent = 1 - df["y_pred"]
         kelly_bet_fighter = np.maximum(0, p_fighter - (p_opponent / b_fighter))
@@ -114,8 +123,8 @@ class MultiKellyPM(object):
             data=event_return_df
         )
         avg_return = event_return_df["return"].mean()
-        plt.title("Portfolio value over time - assume returns compound by date\
-\naverage return: %.4f"%avg_return)
+        plt.title("Portfolio value over time - assume returns compound by %s\
+\naverage return: %.4f"%(x_col, avg_return))
         plt.xticks(rotation=45)
         plt.show()
 

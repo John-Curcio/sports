@@ -15,6 +15,7 @@ from lxml import html
 
 import boto3
 import time
+from base_scrape import BaseBfs
 
 dt_now = str(pd.to_datetime('today').date())
 
@@ -180,6 +181,36 @@ class EventScraper(BasePageScraper):
         odds_df["FighterHref"] = pd.Series(fighter_urls).str[len("https://www.bestfightodds.com/fighters/"):]
         odds_df["EventHref"] = self.url[len("https://www.bestfightodds.com/events/"):]
         return odds_df
+
+# class FighterBFS(BaseBfs):
+    
+#     def __init__(self, root_urls=None, max_depth=3, verbose=True):
+#         if root_urls is None:
+#             root_urls = [
+#                 "https://www.bestfightodds.com/fighters/Aljamain-Sterling-4688",
+#                 "https://www.bestfightodds.com/fighters/Deiveson-Figueiredo-7514",
+#                 "https://www.bestfightodds.com/fighters/Alexander-Volkanovski-9523",
+#                 "https://www.bestfightodds.com/fighters/Charles-Oliveira-1893",
+#                 "https://www.bestfightodds.com/fighters/Kamaru-Usman-4664",
+#                 "https://www.bestfightodds.com/fighters/Israel-Adesanya-7845",
+#                 "https://www.bestfightodds.com/fighters/Glover-Teixeira-1477",
+#                 "https://www.bestfightodds.com/fighters/Francis-Ngannou-5847",
+#                 "https://www.bestfightodds.com/fighters/Rose-Namajunas-3803",
+#                 "https://www.bestfightodds.com/fighters/Valentina-Shevchenko-5475",
+#                 "https://www.bestfightodds.com/fighters/Amanda-Nunes-2225",
+#                 "https://www.bestfightodds.com/fighters/Julianna-Pena-1816",
+#             ]
+#         self.root_urls = root_urls
+#         self.max_depth = max_depth
+#         self.verbose = verbose
+#         self.urls_seen = set()
+#         self.failed_urls = set()
+#         self.event_urls = set()
+        
+#     def get_neighbor_urls(self, url:str) -> set:
+#         curr_scraper = FighterScraper(url)
+#         return curr_scraper.get_fighter_urls()
+        
     
 class FighterBFS(object):
     
@@ -216,7 +247,7 @@ class FighterBFS(object):
 
 class BfoOddsScraper(object):
 
-    def __init__(self, max_iters=3):
+    def __init__(self, max_iters=np.inf):
         self.max_iters = max_iters
         self.fighter_urls_seen = set()
         self.failed_fighter_urls = set()
