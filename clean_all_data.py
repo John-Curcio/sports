@@ -1,5 +1,5 @@
 import pandas as pd
-from wrangle.clean_bfo_data import clean_bfo 
+from wrangle.clean_bfo_data import clean_all_bfo 
 from wrangle.clean_espn_data import EspnDataCleaner
 from wrangle.clean_ufc_stats_data import UfcDataCleaner
 from wrangle import join_datasets
@@ -31,9 +31,14 @@ DC.parse_all()
 DC.espn_df.to_csv("data/espn_data.csv", index=False)
 
 print("--- clean bestfightodds data ---")
-bfo_df = pd.read_csv("data/all_fighter_odds_2022-05-10.csv")
-bfo_df = clean_bfo(bfo_df)
-bfo_df.to_csv("data/bfo_fighter_odds.csv", index=False)
+# bfo_df = pd.read_csv("data/all_fighter_odds_2022-07-16.csv")
+# bfo_df = clean_bfo(bfo_df)
+# bfo_df.to_csv("data/bfo_fighter_odds.csv", index=False)
+
+fighter_df = pd.read_csv("data/all_fighter_odds_2022-07-16.csv")
+event_df = pd.read_csv("data/bfo_event_odds_2022-07-16.csv")
+bfo_df = clean_all_bfo(fighter_df, event_df)
+bfo_df.to_csv("data/bfo_open_and_close_odds.csv", index=False)
 
 print("--- join em all ---")
 join_datasets.main()
