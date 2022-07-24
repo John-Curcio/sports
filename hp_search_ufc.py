@@ -75,6 +75,8 @@ class HyperParamTester(object):
             "espn_fight_id",
             "espn_fighter_id",
             "espn_opponent_id",
+            "Event",
+            "is_ufc",
             "Date",
             "FighterResult",
             "win_target",
