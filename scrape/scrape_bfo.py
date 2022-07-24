@@ -87,7 +87,7 @@ class FighterScraper(BasePageScraper):
         if self.data is None:
             self.get_html()
         # self.data["url"] = self.url
-        soup = BeautifulSoup(self.raw_html, "lxml")
+        soup = BeautifulSoup(self.raw_html, features="lxml")
         tbody = soup.find("tbody")
         urls = [link.get("href") for link in tbody.find_all("a")]
         fighter_urls = [("https://www.bestfightodds.com"+u) 
@@ -338,7 +338,7 @@ class BfoOddsScraper(object):
         return pd.concat(odds_df_list)
 
 if __name__ == "__main__":
-    bfo = BfoOddsScraper(max_iters=10)
+    bfo = BfoOddsScraper(max_iters=np.inf)
     url_df = bfo.scrape_all_fighter_urls()
     bfo.scrape_all_opening_odds(url_df)
     bfo.scrape_all_closing_odds()
