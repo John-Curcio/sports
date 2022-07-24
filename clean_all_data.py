@@ -21,9 +21,9 @@ ufc_dc.ufc_df.to_csv("data/ufc_stats_df.csv")
 
 print("--- clean espn data ---")
 folder = "scrape/scraped_data/mma/espn/"
-bio_path = folder+"espn_bios_2022-05-20.csv"
-stats_path = folder+"espn_stats_2022-05-20.csv"
-match_path = folder+"espn_matches_2022-05-20.csv"
+bio_path = folder+"a_z_bio_df.csv"
+stats_path = folder+"a_z_stats_df.csv"
+match_path = folder+"a_z_matches_df.csv"
 
 DC = EspnDataCleaner(stats_path, bio_path, match_path)
 DC.parse_all()
@@ -35,8 +35,8 @@ print("--- clean bestfightodds data ---")
 # bfo_df = clean_bfo(bfo_df)
 # bfo_df.to_csv("data/bfo_fighter_odds.csv", index=False)
 
-fighter_df = pd.read_csv("data/all_fighter_odds_2022-07-16.csv")
-event_df = pd.read_csv("data/bfo_event_odds_2022-07-16.csv")
+fighter_df = pd.read_csv("data/all_fighter_odds_2022-07-23.csv")
+event_df = pd.read_csv("data/bfo_event_odds_2022-07-23.csv")
 bfo_df = clean_all_bfo(fighter_df, event_df)
 bfo_df.to_csv("data/bfo_open_and_close_odds.csv", index=False)
 
