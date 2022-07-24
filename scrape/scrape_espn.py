@@ -41,7 +41,7 @@ class Fighter(object):
         
         r = requests.get(soup_url, headers=headers)
         html = r.text
-        return BeautifulSoup(html)
+        return BeautifulSoup(html, "lxml")
 
     def scrape_stats(self):
         # get match statistics, like takedown accuracy or advance to mount or whatever
@@ -116,7 +116,7 @@ class FighterSearchScraper(object):
     def get_fighter_urls(self, search_url):
         r = requests.get(search_url, headers=headers)
         html = r.text
-        curr_soup = BeautifulSoup(html)
+        curr_soup = BeautifulSoup(html, "lxml")
         # table_body = curr_soup.find("tbody") # no idea why this works with selenium and not requests!!
         table_body = curr_soup.find("table", {"class": "tablehead"})
         fighter_urls = []

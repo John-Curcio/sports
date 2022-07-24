@@ -28,6 +28,7 @@ class UfcEventScraper(BasePageScraper):
         soup = self.get_soup()
         fighter_links = soup.find_all("a", {"class":"b-link b-link_style_black"})
         fighter_links = [link.get('href') for link in fighter_links]
+        fighter_links = [link for link in fighter_links if link.startswith("http://ufcstats.com/fighter-details")]
         return fighter_links
     
     def _get_date_location(self):
