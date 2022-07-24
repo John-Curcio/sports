@@ -239,6 +239,7 @@ manual_espn_bfo_mapping = {
     '3074493': '/fighters/Alexandra-Albu-7261',
     '2509773': '/fighters/Shintaro-Ishiwatari-7509',
     '2500906': '/fighters/Bozigit-Ataev-9050',
+    '4405109': '/fighters/Su-Mudaerji-9345',
 }
 
 def join_ufc_and_espn(ufc_df, espn_df, ufc_espn_fighter_id_map):
@@ -406,6 +407,8 @@ def main():
         '/fighters/Bazigit-Ataev-8579': '/fighters/Bozigit-Ataev-9050',
         '/fighters/Khalil-Rountree-Jr-11552': '/fighters/Khalil-Rountree-4935',
         '/fighters/Khalil-Rountree-Jr-13118': '/fighters/Khalil-Rountree-4935',
+        '/fighters/Sumudaerji-Sumudaerji-8746': '/fighters/Su-Mudaerji-9345',
+
     }
 
     bfo_df_clean = bfo_df.assign(
