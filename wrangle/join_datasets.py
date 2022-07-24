@@ -133,6 +133,7 @@ class IsomorphismFinder(object):
             "robert sanchez": "roberto sanchez",
             "patrick smith": "patrick trey smith",
             "aleksandra albu": "alexandra albu",
+            "jiří procházka": "jiri prochazka",
         }
         to_replace, value = zip(*replace_dict.items()) # gets keys and values of dict respectively
         names = names.fillna("").str.strip().str.lower()\
@@ -236,6 +237,8 @@ manual_espn_bfo_mapping = {
     '4914568': '/fighters/Pete-Rodrigue-13104',
     '3091146': '/fighters/Toninho-Gavinho-11224',
     '3074493': '/fighters/Alexandra-Albu-7261',
+    '2509773': '/fighters/Shintaro-Ishiwatari-7509',
+    '2500906': '/fighters/Bozigit-Ataev-9050',
 }
 
 def join_ufc_and_espn(ufc_df, espn_df, ufc_espn_fighter_id_map):
@@ -377,6 +380,7 @@ def main():
     # okay, let's proceed to join with bestfightodds data
     # lots of redundant BFO pages
     bfo_fighter_id_map = {
+        '/fighters/Shintaro-Ishiwatar-1151': '/fighters/Shintaro-Ishiwatari-7509',
         '/fighters/Paddy-Holohan-2786': '/fighters/Patrick-Holohan-4991',
         '/fighters/Robert-McDaniel-4064': '/fighters/Bubba-McDaniel-744',
         '/fighters/Nicholas-Musoke-4199': '/fighters/Nico-Musoke-2144',
@@ -399,6 +403,9 @@ def main():
         '/fighters/Philip-Rowe-9379': '/fighters/Phil-Rowe-9898',
         '/fighters/Phillip-Rowe-11319': '/fighters/Phil-Rowe-9898',
         '/fighters/Aleksandra-Albu-5539': '/fighters/Alexandra-Albu-7261',
+        '/fighters/Bazigit-Ataev-8579': '/fighters/Bozigit-Ataev-9050',
+        '/fighters/Khalil-Rountree-Jr-11552': '/fighters/Khalil-Rountree-4935',
+        '/fighters/Khalil-Rountree-Jr-13118': '/fighters/Khalil-Rountree-4935',
     }
 
     bfo_df_clean = bfo_df.assign(
