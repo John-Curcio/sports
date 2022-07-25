@@ -14,18 +14,21 @@ class HyperParamTester(object):
         self.model = model
         self.static_feat_df = self.get_static_feat_df()
 
-    def test_hp_range(self, n_draws):
+    def test_hp_range(self, n_draws_per_param):
         results = []
-        # for _ in range(n_draws):
-        #     pca_elo_alpha = np.random.uniform(0, 1)
-        #     binary_elo_alpha = np.random.uniform(0, 1)
-        #     acc_elo_alpha = np.random.uniform(0, 1)
-        #     n_pca = np.random.choice(range(6, 20))
-        elo_alpha_vals = np.linspace(0.25, 1, n_draws+2)[1:-1]
-        for pca_elo_alpha in [0.4, 0.6, 0.8]:
-            for binary_elo_alpha in [0.4, 0.6, 0.8, 0.95]:
-                for acc_elo_alpha in [0.4, 0.6, 0.8, 0.95]:
-                    for n_pca in [8, 12, 16]:
+        # pca_elo_alpha_vals = np.random.uniform(0, 1, n_draws_per_param)
+        # binary_elo_alpha_vals = np.random.uniform(0, 1, n_draws_per_param)
+        # acc_elo_alpha_vals = np.random.uniform(0, 1, n_draws_per_param)
+        # n_pca_vals = np.random.choice(range(6, 20), n_draws_per_param)
+
+        pca_elo_alpha_vals = [0.4, 0.6, 0.8]
+        binary_elo_alpha_vals = [0.4, 0.6, 0.8]
+        acc_elo_alpha_vals = [0.4, 0.6, 0.8]
+        n_pca_vals = [8, 12, 16]
+        for pca_elo_alpha in pca_elo_alpha_vals:
+            for binary_elo_alpha in binary_elo_alpha_vals:
+                for acc_elo_alpha in acc_elo_alpha_vals:
+                    for n_pca in n_pca_vals:
                         print(f"""testing the following params:
                         pca elo alpha: {pca_elo_alpha}
                         bin elo alpha: {binary_elo_alpha}
@@ -65,7 +68,8 @@ class HyperParamTester(object):
             # acc elo cols
             'pred_logit_p_SML_SMA_diff', 
             'pred_logit_p_TDL_TDA_diff',
-            'pred_logit_p_KD_SSL_diff', 'pred_logit_p_TDS_TDL_diff',
+            'pred_logit_p_KD_SSL_diff', 
+            #'pred_logit_p_TDS_TDL_diff',
         ] + [
             # pca elo cols
             f"pred_PC_{i}" for i in range(n_pca)
@@ -86,7 +90,7 @@ class HyperParamTester(object):
             "OpponentOpen",
         ]
 
-        feat_df = feat_df[misc_cols + feat_cols]
+        feat_df = feat_df[misc_cols + feat_cols].query("is_ufc")
         result = self.eval_model(feat_df, feat_cols)
         result["pca_elo_alpha"] = pca_elo_alpha
         result["binary_elo_alpha"] = binary_elo_alpha
@@ -113,7 +117,8 @@ class HyperParamTester(object):
 
     def get_pca_elo_df(self, elo_alpha, n_pca=16):
         pca_ew = PcaEloWrapper(n_pca=n_pca, target_cols=self.diff_cols, alpha=elo_alpha)
-        pca_elo_feat_df = pca_ew.fit_transform_all(self.df)
+        keep_inds = self.df[self.diff_cols].notnull().all(1) | self.df["is_ufc"]
+        pca_elo_feat_df = pca_ew.fit_transform_all(self.df.loc[keep_inds].reset_index(drop=True))
         return pca_elo_feat_df
 
     def get_binary_elo_df(self, elo_alpha):
@@ -128,7 +133,10 @@ class HyperParamTester(object):
             for landed_col, attempted_col in zip(self.landed_cols, self.attempted_cols)
         }
         acc_ew = AccEloWrapper(elo_alphas)
-        acc_elo_feat_df = acc_ew.fit_transform_all(self.df)
+        subset_cols = self.landed_cols + self.attempted_cols
+        subset_cols = [col+"_opp" for col in subset_cols] + subset_cols
+        keep_inds = self.df[subset_cols].notnull().all(1) | self.df["is_ufc"]
+        acc_elo_feat_df = acc_ew.fit_transform_all(self.df.loc[keep_inds].reset_index(drop=True))
         print(acc_elo_feat_df.isnull().mean())
         return acc_elo_feat_df
 
@@ -164,18 +172,20 @@ class HyperParamTester(object):
     def prep_dataset(self):
         df = pd.read_csv("data/full_bfo_ufc_espn_data_clean.csv", parse_dates=["Date", "DOB", "DOB_opp"])
         stat_landed_cols = [
-            'SCBL', 'SCHL', 'SCLL', 'SGBL', 'SGHL', 'SGLL', 'SDBL', 'SDHL', 'SDLL',
-            'SHL', 'SBL', 'SLL', 'SDL', 'SCL', 'SGL', 'SSL', 'TSL', 'TDL',
+            "SHL", "SBL", "SLL", "SDL", "SCL", "SGL",
+            "SSL", "TSL", "TDL",
         ]
+
         stat_failed_cols = [
-            'SM_fail', 'SS_fail', 'TS_fail', 'TD_fail', 'SCB_fail', 'SCH_fail',
-            'SCL_fail', 'SGB_fail', 'SGH_fail', 'SGL_fail', 'SDB_fail', 'SDH_fail',
-            'SDL_fail', 'SH_fail', 'SB_fail', 'SL_fail', 'SD_fail', 'SC_fail',
-            'SG_fail',
+            "SH_fail", "SB_fail", "SL_fail", "SD_fail", "SC_fail", "SG_fail",
+            "SS_fail", "TS_fail", "TD_fail",
+            "SM_fail",
         ]
+
         misc_stat_cols = [
-            'KD', 'RV', 'AD', 'ADTB', 'ADHG', 'ADTM', 'ADTS', 'ctrl_seconds', 
+            "KD", "RV", "ctrl_seconds",
         ]
+
         diff_cols = []
         for stat_col in stat_landed_cols + stat_failed_cols + misc_stat_cols:
             diff_col = f"diff_sqrt_{stat_col}"
@@ -198,8 +208,8 @@ class HyperParamTester(object):
         sm_landed_opponent = (sm_finish & (df["FighterResult"] == "L")).astype(int)
         df["SML_opp"] = sm_landed_opponent
         df["SMA_opp"] = np.maximum(df["SM_opp"], df["SML_opp"])
-        self.landed_cols = ["SML", "TDL", "KD", "TDS"]
-        self.attempted_cols = ["SMA", "TDA", "SSL", "TDL"]
+        self.landed_cols = ["SML", "TDL", "KD"]
+        self.attempted_cols = ["SMA", "TDA", "SSL"]
         return df.query("Date <= '2021-01-01'")
 
 if __name__ == "__main__":
@@ -207,6 +217,6 @@ if __name__ == "__main__":
                                 p_fighter_implied_col="p_fighter_open_implied",
                                 beta_prior_std=1.0, mcmc=False)
     hp_tester = HyperParamTester(mod)
-    result_df = hp_tester.test_hp_range(n_draws=5)
+    result_df = hp_tester.test_hp_range(n_draws_per_param=2)
     print(result_df.sort_values("in_sample_xce"))
     result_df.to_csv("data/hp_results_grid_ufc.csv", index=False)
