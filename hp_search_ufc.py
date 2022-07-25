@@ -24,7 +24,7 @@ class HyperParamTester(object):
         pca_elo_alpha_vals = [0.4, 0.6, 0.8]
         binary_elo_alpha_vals = [0.4, 0.6, 0.8]
         acc_elo_alpha_vals = [0.4, 0.6, 0.8]
-        n_pca_vals = [8, 12, 16]
+        n_pca_vals = [2, 3, 4]
         for pca_elo_alpha in pca_elo_alpha_vals:
             for binary_elo_alpha in binary_elo_alpha_vals:
                 for acc_elo_alpha in acc_elo_alpha_vals:
