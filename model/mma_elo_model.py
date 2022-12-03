@@ -64,7 +64,7 @@ class RealEloEstimator(object):
         )
     
     def _fit_ffill(self, elo_df:pd.DataFrame):
-        elo_df = elo_df.copy()
+        elo_df = elo_df.copy()      
         # many of these fighters are guys who competed in cheap leagues their whole
         # careers, and never recorded the target statistic. We impute their elo scores with 0
         df_with_target = elo_df.dropna(subset=[self.target_col])
@@ -72,6 +72,11 @@ class RealEloEstimator(object):
                                   set(df_with_target["espn_opponent_id"])
         useless_fighter_ids = set(self.fighter_ids) - fighter_ids_with_target
         self.fighter_ids_with_target = pd.Series(sorted(fighter_ids_with_target))
+        if not elo_df[self.target_col].isnull().any():
+            # no need to ffill
+            self.useless_fighter_ids = pd.Series([], dtype='int64')
+            elo_df["pred_target"] = elo_df["fighter_elo"] - elo_df["opponent_elo"]
+            return elo_df  
         self.useless_fighter_ids = pd.Series(sorted(useless_fighter_ids))
         is_useless_fighter  = elo_df["espn_fighter_id"].isin(useless_fighter_ids)
         is_useless_opponent = elo_df["espn_opponent_id"].isin(useless_fighter_ids)
@@ -108,13 +113,17 @@ class RealEloEstimator(object):
             elo_df[["fighter_elo", "opponent_elo"]].isnull().mean()
         elo_df["pred_target"] = elo_df["fighter_elo"] - elo_df["opponent_elo"]
         return elo_df
-        
-    def fit(self, df:pd.DataFrame):
+
+    def fit_fighter_encoder(self, df):
         self.fighter_ids = sorted(set(df["espn_fighter_id"]) | set(df["espn_opponent_id"]))
-        self._fighter_powers = np.zeros(len(self.fighter_ids))
         categories = np.array(self.fighter_ids).reshape(-1,1)
         self._fighter_encoder = OneHotEncoder()
         self._fighter_encoder.fit(categories)
+        
+    def fit(self, df:pd.DataFrame):
+        if self.fighter_ids is None:
+            self.fit_fighter_encoder(df)
+        self._fighter_powers = np.zeros(len(self.fighter_ids))
         
         fitted_elo_df = self._fit_workhorse(df)
         # okay this is the hard part - ffilling
@@ -165,12 +174,9 @@ class BinaryEloEstimator(RealEloEstimator):
     # This thing is reasonably fast
     
     def fit(self, df):
-        self.fighter_ids = sorted(set(df["espn_fighter_id"]) | set(df["espn_opponent_id"]))
+        if self.fighter_ids is None:
+            self.fit_fighter_encoder(df)
         self._fighter_powers = np.zeros(len(self.fighter_ids))
-        categories = np.array(self.fighter_ids).reshape(-1,1)
-        self._fighter_encoder = OneHotEncoder()
-        self._fighter_encoder.fit(categories)
-        
         fighter_id_mat = self.transform_fighter_ids(df["espn_fighter_id"])
         opponent_id_mat = self.transform_fighter_ids(df["espn_opponent_id"])
         pred_elo_features = np.zeros(len(df))
@@ -206,6 +212,19 @@ class BinaryEloEstimator(RealEloEstimator):
             updated_opponent_elo=updated_opponent_elos,
         )
         return self.elo_feature_df
+
+    def predict(self, df):
+        fighter_id_mat = self.transform_fighter_ids(df["espn_fighter_id"])
+        opponent_id_mat = self.transform_fighter_ids(df["espn_opponent_id"])
+        # this will be a matrix of size (1, len(df))
+        y_hat = expit(self._fighter_powers * (fighter_id_mat.T - opponent_id_mat.T))
+        # y_hat.A1 is a flattened 1D array of size (len(df),)
+        return pd.DataFrame({
+            "espn_fight_id": df["espn_fight_id"],
+            "espn_fighter_id": df["espn_fighter_id"],
+            "espn_opponent_id": df["espn_opponent_id"],
+            "pred_target": y_hat.A1,
+        })
         
 
 class AccEloEstimator(object):
@@ -345,6 +364,13 @@ class AccEloEstimator(object):
                                   set(df_with_target["espn_opponent_id"])
         useless_fighter_ids = set(self.fighter_ids) - fighter_ids_with_target
         self.fighter_ids_with_target = pd.Series(sorted(fighter_ids_with_target))
+        if not elo_df[[self.landed_col, self.attempt_col, 
+                    self.landed_col+"_opp", self.attempt_col+"_opp"]].isnull().any().any():
+            # no need to ffill
+            self.useless_fighter_ids = pd.Series([], dtype='int64')
+            elo_df["p_fighter_hat"] = expit(elo_df["fighter_offense_elo"] - elo_df["opponent_defense_elo"])
+            elo_df["p_opponent_hat"] = expit(elo_df["opponent_offense_elo"] - elo_df["fighter_defense_elo"])
+            return elo_df
         self.useless_fighter_ids = pd.Series(sorted(useless_fighter_ids))
         is_useless_fighter  = elo_df["espn_fighter_id"].isin(useless_fighter_ids)
         is_useless_opponent = elo_df["espn_opponent_id"].isin(useless_fighter_ids)
@@ -389,15 +415,20 @@ class AccEloEstimator(object):
         elo_df["p_fighter_hat"] = expit(elo_df["fighter_offense_elo"] - elo_df["opponent_defense_elo"])
         elo_df["p_opponent_hat"] = expit(elo_df["opponent_offense_elo"] - elo_df["fighter_defense_elo"])
         return elo_df
-        
-    def fit(self, df:pd.DataFrame):
-        self._fit_power_intercept(df)
+
+    def fit_fighter_encoder(self, df):
         self.fighter_ids = sorted(set(df["espn_fighter_id"]) | set(df["espn_opponent_id"]))
-        self._fighter_offense_powers = np.zeros(len(self.fighter_ids))
-        self._fighter_defense_powers = np.zeros(len(self.fighter_ids))
         categories = np.array(self.fighter_ids).reshape(-1,1)
         self._fighter_encoder = OneHotEncoder()
         self._fighter_encoder.fit(categories)
+        
+    def fit(self, df:pd.DataFrame):
+        self._fit_power_intercept(df)
+        if self.fighter_ids is None:
+            self.fit_fighter_encoder(df) 
+        self._fighter_offense_powers = np.zeros(len(self.fighter_ids))
+        self._fighter_defense_powers = np.zeros(len(self.fighter_ids))
+        categories = np.array(self.fighter_ids).reshape(-1,1)
         
         fitted_elo_df = self._fit_workhorse(df)
         # okay this is the hard part - ffilling

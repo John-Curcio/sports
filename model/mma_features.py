@@ -29,6 +29,7 @@ class RealEloWrapper(object):
         for target_col, alpha in self.elo_alphas.items():
             print(f"getting elo features for {target_col}")
             elo_estimator = RealEloEstimator(target_col, alpha=alpha)
+            elo_estimator.fit_fighter_encoder(pd.concat([train_df, test_df]))
             elo_estimator.fit(train_df)
             self.fitted_elo_estimators[target_col] = elo_estimator
             train_feat_df[f"pred_{target_col}"] = elo_estimator.elo_feature_df["pred_target"]
@@ -61,6 +62,7 @@ class BinaryEloWrapper(object):
         for target_col, alpha in self.elo_alphas.items():
             print(f"getting elo features for {target_col}")
             elo_estimator = BinaryEloEstimator(target_col, alpha=alpha)
+            elo_estimator.fit_fighter_encoder(pd.concat([train_df, test_df]))
             elo_estimator.fit(train_df)
             self.fitted_elo_estimators[target_col] = elo_estimator
             train_feat_df[f"pred_{target_col}"] = elo_estimator.elo_feature_df["pred_target"]
@@ -163,6 +165,7 @@ class AccEloWrapper(object):
             target_col = f"{landed_col}_{attempt_col}"
             print(f"getting elo features for {landed_col}/{attempt_col}")
             elo_estimator = AccEloEstimator(landed_col=landed_col, attempt_col=attempt_col, alpha=alpha)
+            elo_estimator.fit_fighter_encoder(pd.concat([train_df, test_df]))
             elo_estimator.fit(train_df)
             self.fitted_elo_estimators[target_col] = elo_estimator
             
