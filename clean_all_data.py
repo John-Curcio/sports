@@ -35,8 +35,8 @@ print("--- clean bestfightodds data ---")
 # bfo_df = clean_bfo(bfo_df)
 # bfo_df.to_csv("data/bfo_fighter_odds.csv", index=False)
 
-fighter_df = pd.read_csv("data/all_fighter_odds_2022-07-23.csv")
-event_df = pd.read_csv("data/bfo_event_odds_2022-07-23.csv")
+fighter_df = pd.read_csv("data/all_fighter_odds_2022-07-16.csv")
+event_df = pd.read_csv("data/bfo_event_odds_2022-07-16.csv")
 bfo_df = clean_all_bfo(fighter_df, event_df)
 bfo_df.to_csv("data/bfo_open_and_close_odds.csv", index=False)
 

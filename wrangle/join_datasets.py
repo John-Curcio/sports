@@ -291,6 +291,8 @@ def join_ufc_and_espn(ufc_df, espn_df, ufc_espn_fighter_id_map):
         "fight_id", "time_dur", "max_time", "weight_bout",
         "method_description", "round_description", "time_description",
         "time_format", "referee", "details_description",
+        "weight_class", "method", "round", "location", "img_png_url",
+        "is_title_fight", "EventUrl",
         *col_map.keys()
     ]
     return espn_df.merge(ufc_df[ufc_df_cols], 
