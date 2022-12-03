@@ -287,7 +287,13 @@ def join_ufc_and_espn(ufc_df, espn_df, ufc_espn_fighter_id_map):
             col_map[opp_col] = fighter_col
     ufc_df2 = ufc_df.rename(columns=col_map)
     ufc_df = pd.concat([ufc_df, ufc_df2]).reset_index(drop=True)
-    return espn_df.merge(ufc_df[["fight_id", *col_map.keys()]], 
+    ufc_df_cols = [
+        "fight_id", "time_dur", "max_time", "weight_bout",
+        "method_description", "round_description", "time_description",
+        "time_format", "referee", "details_description",
+        *col_map.keys()
+    ]
+    return espn_df.merge(ufc_df[ufc_df_cols], 
         on=["fight_id", "FighterID", "OpponentID"], how="left", 
         suffixes=("_espn", "_ufc"))
 
