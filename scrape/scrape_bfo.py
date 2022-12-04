@@ -28,7 +28,7 @@ headers = {
 class EmptyResponse(Exception):
     pass
 
-class BFORequest(object):
+class BfoRequest(object):
     
     def __init__(self, url, max_tries=10, sleep_time=5):
         self.url = url
@@ -50,7 +50,7 @@ class BFORequest(object):
             raise EmptyResponse(self.url)
         return r
 
-class BasePageScraper(BFORequest):
+class BaseBfoPageScraper(BfoRequest):
 
     def __init__(self, url, **request_kwargs):
         super().__init__(url, **request_kwargs)
@@ -66,7 +66,7 @@ class BasePageScraper(BFORequest):
         self.data = pd.concat(tables)
         return self.data
 
-class FighterScraper(BasePageScraper):
+class FighterScraper(BaseBfoPageScraper):
     
     def __init__(self, url, **request_kwargs):
         super().__init__(url, **request_kwargs)
@@ -141,7 +141,7 @@ class FighterScraper(BasePageScraper):
         self.odds_df = pd.DataFrame(odds_df_rows)
         return self.odds_df
 
-class EventScraper(BasePageScraper):
+class EventScraper(BaseBfoPageScraper):
     
     def __init__(self, url, **request_kwargs):
         super().__init__(url, **request_kwargs)
