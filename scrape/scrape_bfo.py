@@ -15,7 +15,8 @@ from lxml import html
 
 import boto3
 import time
-from base_scrape import BaseBfs
+from base_scrape import BaseBfs, base_db_interface
+
 
 dt_now = str(pd.to_datetime('today').date())
 
@@ -337,10 +338,24 @@ class BfoOddsScraper(object):
                 continue
         return pd.concat(odds_df_list)
 
+    def scrape_and_write_opening_odds(self):
+        url_df = self.scrape_all_fighter_urls()
+        # batching fighters by first letter of last name (as encoded in url)
+        start_letter_ind = len("https://www.bestfightodds.com/fighters/")
+        url_df["start_letter"] = url_df["url"].str[start_letter_ind]
+        for start_letter, grp in url_df.groupby("start_letter"):
+            print("{} fighters with name beginning with {}".format(len(grp), start_letter))
+            match_df = self.get_fighter_odds(grp["url"])
+            base_db_interface.write_update(
+                table_name="bfo_fighter_odds",
+                df=match_df,
+            )
+        return None
+
 if __name__ == "__main__":
-    bfo = BfoOddsScraper(max_iters=np.inf)
-    url_df = bfo.scrape_all_fighter_urls()
-    bfo.scrape_all_opening_odds(url_df)
-    bfo.scrape_all_closing_odds()
+    # max_iters = 2
+    max_iters = np.inf
+    bfo = BfoOddsScraper(max_iters=max_iters)
+    bfo.scrape_and_write_opening_odds()
     print("done!")
     
