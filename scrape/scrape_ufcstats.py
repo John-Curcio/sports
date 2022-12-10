@@ -1,4 +1,9 @@
-from base_scrape import BasePageScraper
+"""
+FullUfcScraper.scrape_all() and FullUfcScraper.write_all_to_tables() are 
+probably the most useful bits of code in this module
+"""
+
+from base_scrape import BasePageScraper, base_db_interface
 import pandas as pd
 import numpy as np
 import string
@@ -7,9 +12,10 @@ import re
 
 
 class UfcEventScraper(BasePageScraper):
-    # basically just get weight classes
-    # http://ufcstats.com/event-details/253d3f9e97ca149a
-    
+    """
+    basically just use this to get weight classes
+    http://ufcstats.com/event-details/253d3f9e97ca149a
+    """
     def get_fights(self):
         soup = self.get_soup()
         class_str = "b-fight-details__table-row b-fight-details__table-row__hover js-fight-details-click"
@@ -27,8 +33,11 @@ class UfcEventScraper(BasePageScraper):
     def get_fighter_urls(self):
         soup = self.get_soup()
         fighter_links = soup.find_all("a", {"class":"b-link b-link_style_black"})
-        fighter_links = [link.get('href') for link in fighter_links]
-        fighter_links = [link for link in fighter_links if link.startswith("http://ufcstats.com/fighter-details")]
+        fighter_links = []
+        for link in soup.find_all("a", {"class":"b-link b-link_style_black"}):
+            href = link.get("href")
+            if href is not None and "/fighter-details" in href:
+                fighter_links.append(href)
         return fighter_links
     
     def _get_date_location(self):
@@ -75,6 +84,14 @@ class MissingStatsException(Exception):
 
 
 class UfcFightDetails(BasePageScraper):
+    """
+    Given the url to a fight-details page, grabs the following:
+    * fight_description
+    * totals
+    * strikes
+    * round_totals
+    * round_strikes
+    """
     
     def get_page_urls(self) -> set:
         soup = self.get_soup()
@@ -173,7 +190,7 @@ class UfcFightDetails(BasePageScraper):
         self.round_totals = self.parse_round_totals_table(round_totals, fighter_ids)
         return self.totals
         #return self.totals.merge(self.strikes, on=["FighterID"], suffixes=("", "_y"))
-    
+
 
 class UfcFighterScraper(BasePageScraper):
     
@@ -210,7 +227,18 @@ class UfcFighterScraper(BasePageScraper):
     
 
 class CharFightersScraper(BasePageScraper):
-    
+    """
+    This class only gets used in UfcUrlScraper.get_all_fighter_urls, so 
+    it's not really useful on its own.
+
+    ufcstats.com has this thing where you can get all the fighters on 
+    the website whose last names start with a given letter. So for example,
+    http://ufcstats.com/statistics/fighters?char=a&page=all gets you all
+    the fighters whose last names start with "a". This class is useful for 
+    scraping all the links to the individual fighter pages that are 
+    included in this "char=a" page.
+    """
+
     def get_page_urls(self):
         # get set of urls mapping to other pages to scrape
         soup = self.get_soup()
@@ -219,11 +247,12 @@ class CharFightersScraper(BasePageScraper):
         
     def get_page_data(self):
         return None
-    
+
 
 class UfcUrlScraper(object):
     """
-    gets all fighter urls, then gets all event urls and fight urls
+    Gets all fighter urls, then gets all event urls and fight urls. No 
+    input arguments required.
     """
     
     def __init__(self):
@@ -236,7 +265,7 @@ class UfcUrlScraper(object):
         # for c in ["x"]:
         for c in tqdm(string.ascii_lowercase):
             url = f"http://ufcstats.com/statistics/fighters?char={c}&page=all"
-            self.fighter_urls |= CharFightersScraper(url).get_page_urls()
+            self.fighter_urls |= CharFightersScraper(url).get_page_urls() 
         return self.fighter_urls
     
     def get_all_event_and_fight_urls(self):
@@ -258,6 +287,22 @@ class UfcUrlScraper(object):
 
 
 class FullUfcScraper(object):
+    """
+    Given a list of fighter_urls, a list of event_urls, and a list of fight_urls,
+    get the following data:
+    * fight totals (total strikes, takedowns, etc.)
+    * fight strike stats (significant strikes, body/leg/head breakdown, etc.)
+    * fight round totals (total strikes, takedowns, etc. by round)
+    * fight round strike stats (significant strikes, etc. by round)
+    * fight descriptions (weight class, method, round, time, etc.)
+    * event data (date, location, and high-level stuff seen from the event-details
+      page. See http://ufcstats.com/event-details/2a470ad41c22c25a for an example)
+    * fighter data (height, weight, reach, stance, dob, and fighter id)
+
+    Most useful methods:
+    * scrape_all()
+    * write_all_to_tables()
+    """
     
     def __init__(self, fighter_urls, event_urls, fight_urls):
         self.fighter_urls = fighter_urls
@@ -304,6 +349,8 @@ class FullUfcScraper(object):
             event_df = event_scraper.get_page_data()
             event_df["EventUrl"] = event_url
             event_data.append(event_df)
+        if len(event_data) == 0:
+            return None
         self.event_data = pd.concat(event_data).reset_index(drop=True)
         return self.event_data
     
@@ -317,35 +364,110 @@ class FullUfcScraper(object):
         return self.fighter_data
     
     def scrape_all(self):
-        print("----- scraping fights -----")
-        self.scrape_fights()
         print("----- scraping events -----")
         self.scrape_events()
         print("----- scraping fighters -----")
         self.scrape_fighters()
+        print("----- scraping fights -----")
+        self.scrape_fights()
 
+    def write_all_to_tables(self):
+        for table_name, df in [
+            ("ufc_fight_description", self.fight_description_df),
+            ("ufc_totals", self.totals_df),
+            ("ufc_strikes", self.strikes_df),
+            ("ufc_round_totals", self.round_totals_df),
+            ("ufc_round_strikes", self.round_strikes_df),
+            ("ufc_events", self.event_data),
+            ("ufc_fighters", self.fighter_data),
+        ]:
+            if df is not None:
+                print(f"writing {len(df)} rows to {table_name}")
+                base_db_interface.write_update(
+                    table_name=table_name, 
+                    df=df
+                )
+        return None
+
+
+class UpcomingUfcEventScraper(UfcEventScraper):
+    pass
+
+class UpcomingUfcScraper(BasePageScraper):
+
+    def __init__(self):
+        super().__init__(url="http://ufcstats.com/statistics/events/upcoming")
+        self.upcoming_event_urls = None
+        self.upcoming_events_df = None
+        self.upcoming_fights_df = None 
+
+    def get_page_urls(self):
+        """
+        This method is the same as UfcFighterScraper. I think it's better to 
+        have it duplicated than to have a weird dependency btw this class and 
+        UfcFighterScraper
+        """
+        soup = self.get_soup()
+        # get all the events coming up
+        class_str = "b-link b-link_style_black"
+        possible_event = soup.find_all("a", {"class": class_str})
+        links = [link.get('href') for link in possible_event]
+        return links
+
+    def scrape_upcoming_event_urls(self):
+        self.upcoming_event_urls = self.get_page_urls()
+
+    def scrape_upcoming_fights(self):
+        upcoming_fights = []
+        for event_url in tqdm(self.upcoming_event_urls):
+            event_scraper = UpcomingUfcEventScraper(event_url)
+            event_df = event_scraper.get_page_data()
+            event_df["EventUrl"] = event_url
+            upcoming_fights.append(event_df)
+        self.upcoming_fights_df = pd.concat(upcoming_fights).reset_index(drop=True)
+        return self.upcoming_fights_df
+
+    def scrape_all(self):
+        self.scrape_upcoming_event_urls()
+        print("--- upcoming events to scrape matchups for ---")
+        for event_url in self.upcoming_event_urls:
+            print(event_url)
+        print("--- scraping upcoming fights ---")
+        self.scrape_upcoming_fights()
+
+    def write_all_to_tables(self):
+        for table_name, df in [
+            ("ufc_upcoming_events", self.upcoming_events_df),
+            ("ufc_upcoming_fights", self.upcoming_fights_df),
+        ]:
+            if df is not None:
+                print(f"writing {len(df)} rows to {table_name}")
+                base_db_interface.write_replace(
+                    table_name=table_name, 
+                    df=df
+                )
+        return None
 
 if __name__ == "__main__":
-    url_scraper = UfcUrlScraper()
-    url_scraper.get_all_event_and_fight_urls()
-
-    full_scraper = FullUfcScraper(
-        fighter_urls=url_scraper.fighter_urls,
-        event_urls=url_scraper.event_urls,
-        fight_urls=url_scraper.fight_urls,
-    ) 
-    full_scraper.scrape_all()
-    folder = "scraped_data/mma/ufcstats/"
-    filename_dict = {
-        "totals": full_scraper.totals_df,
-        "strikes": full_scraper.strikes_df,
-        "round_totals": full_scraper.round_totals_df,
-        "round_strikes": full_scraper.round_strikes_df,
-        "fight_descriptions": full_scraper.fight_description_df,
-        "event_data": full_scraper.event_data,
-        "fighter_data": full_scraper.fighter_data,
-    }
-    for filename, df in filename_dict.items():
-        path = folder + filename + ".csv"
-        df.to_csv(path, index=False)
+    TEST_HISTORICAL = False 
+    TEST_UPCOMING = True
+    if TEST_HISTORICAL:
+        url_scraper = UfcUrlScraper()
+        url_scraper.get_all_event_and_fight_urls()
+        # for now let's forget about events. They don't add much, 
+        # and I've got a weird bug where fighter urls are missing
+        full_scraper = FullUfcScraper(
+            fighter_urls=url_scraper.fighter_urls,
+            # event_urls=[], 
+            event_urls=url_scraper.event_urls,
+            fight_urls=url_scraper.fight_urls,
+        ) 
+        full_scraper.scrape_all()
+        full_scraper.write_all_to_tables()
+        print("done with test historical")
+    if TEST_UPCOMING:
+        upcoming_scraper = UpcomingUfcScraper()
+        upcoming_scraper.scrape_all()
+        upcoming_scraper.write_all_to_tables()
+        print("done with test upcoming")
 
