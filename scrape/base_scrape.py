@@ -70,7 +70,7 @@ class BasePageScraper(ABC):
         # get set of urls mapping to other pages to scrape
         raise NotImplemented
         
-    @abstractmethod
+    # @abstractmethod
     def get_page_data(self):
         # get all the data we could want on this page
         raise NotImplemented
