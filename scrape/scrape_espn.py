@@ -12,6 +12,7 @@ from io import StringIO
 from lxml import html
 
 import boto3
+from base_scrape import base_db_interface, BasePageScraper
 
 headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/46.0.2490.80 Safari/537.36',
@@ -178,16 +179,57 @@ class FighterSearchScraper(object):
             self.matches_df = pd.concat(matches_list)
         self.missed_fighters = pd.DataFrame({"fighter_url": missed_fighters})
 
-if __name__ == "__main__":
-    start_letter, end_letter = "a", "z"
-    foo = FighterSearchScraper(start_letter=start_letter, end_letter=end_letter)
-    foo.run_scraper(bio=True, matches=True, stats=True)
-    print(foo.stats_df.head())
-    foo.stats_df.to_csv("scraped_data/mma/espn/{}_{}_stats_df.csv".format(start_letter, end_letter), index=False)
-    foo.bio_df.to_csv("scraped_data/mma/espn/{}_{}_bio_df.csv".format(start_letter, end_letter), index=False)
-    foo.matches_df.to_csv("scraped_data/mma/espn/{}_{}_matches_df.csv".format(start_letter, end_letter), index=False)
-    print("done with fighters in letter range {}-{}".format(start_letter, end_letter))
+    def write_all_to_tables(self):
+        for table_name, df in [
+            ("espn_bio", self.bio_df),
+            ("espn_stats", self.stats_df),
+            ("espn_matches", self.matches_df),
+            ("espn_missed_fighters", self.missed_fighters)
+        ]:
+            if df is not None:
+                print(f"writing {len(df)} rows to {table_name}")
+                base_db_interface.write_update(
+                    table_name=table_name, 
+                    df=df
+                )
+        return None   
 
+class UpcomingEspnScraper(BasePageScraper):
+
+    def __init__(self):
+        pass 
+
+    def get_page_urls(self):
+        pass 
+
+    def scrape_upcoming_event_urls(self):
+        pass
+
+    def scrape_upcoming_events(self):
+        pass
+
+    def scrape_all(self):
+        # get all league URLs
+        pass
+
+    def write_all_to_tables(self):
+        pass
+
+if __name__ == "__main__":
+    TEST_HISTORICAL = False
+    TEST_UPCOMING = True
+    if TEST_HISTORICAL:
+        start_letter, end_letter = "a", "z"
+        foo = FighterSearchScraper(start_letter=start_letter, end_letter=end_letter)
+        foo.run_scraper(bio=True, matches=True, stats=True)
+        foo.write_all_to_tables()
+        # print(foo.stats_df.head())
+        # foo.stats_df.to_csv("scraped_data/mma/espn/{}_{}_stats_df.csv".format(start_letter, end_letter), index=False)
+        # foo.bio_df.to_csv("scraped_data/mma/espn/{}_{}_bio_df.csv".format(start_letter, end_letter), index=False)
+        # foo.matches_df.to_csv("scraped_data/mma/espn/{}_{}_matches_df.csv".format(start_letter, end_letter), index=False)
+        print("done with fighters in letter range {}-{}".format(start_letter, end_letter))
+    if TEST_UPCOMING:
+        pass 
 
 
     # url = "https://www.espn.com/mma/fighter/stats/_/id/2560713/derrick-lewis"
