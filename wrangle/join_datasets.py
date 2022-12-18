@@ -5,6 +5,10 @@ import numpy as np
 class IsomorphismFinder(object):
     """
     Learn mapping btw FighterIDs in df1 and FighterIDs in df2
+
+    TODO: IIRC we prefer that it's a bijection ofc, but may have 
+    to settle for a surjection, and I think it's supposed to be 
+    FighterID1 --> FighterID2. But I'm not sure!!!
     """
     
     def __init__(self, df1, df2, manual_mapping=None):
@@ -51,6 +55,10 @@ class IsomorphismFinder(object):
         return df["Date"].astype(str) + "_" + min_id + "_" + max_id
     
     def _catch_conflicts_in_merge(self, df):
+        """
+        Function for catching "conflicts" in the merge: cases where
+        a FighterID1 maps to multiple FighterID2s. This is not allowed!
+        """
         counts = df.groupby("FighterID1")["FighterID2"].nunique()
         if any(counts > 1):
             print(f"Found {sum(counts > 1)} conflicts")
@@ -66,6 +74,15 @@ class IsomorphismFinder(object):
         return None
     
     def find_base_map(self):
+        """
+        This is like the base case of the find_isomorphism loop. We 
+        start by inner joining df1 and df2 on Date, FighterName, and 
+        OpponentName. These are rows where fighters have the same names
+        as in df1 and df2. It is extremely unlikely that in reality, two 
+        pairs of fighters with the same names fought on the same day. 
+        In find_isomorphism, we take this as ground truth, and then 
+        broadcast outwards. 
+        """
         cols = ["Date", "FighterName", "OpponentName", "FighterID", "OpponentID"]
         overlapping_fights = self.df1[cols].merge(
             self.df2[cols],
@@ -87,8 +104,23 @@ class IsomorphismFinder(object):
         self.fighter_id_map = self.fighter_id_map.combine_first(temp_map) 
     
     def find_isomorphism(self, n_iters=3):
+        """
+        This is where the magic happens. We want to learn the full
+        mapping btw IDs in df1 and df2. We do this with a greedy, iterative
+        process.
+        
+        * We start with a base map, which is just inner-joining on 
+          fighter names and date. That gives us a subset of the full 
+          mapping btw IDs in df1 and df2, which we want to learn.
+        * Suppose U1, U2 are unknown fighter IDs in df1 and df2, respectively.
+          In df1, U1 fought a, b, c, and d, all of whom we know the mapping for.
+          In df2, U2 fought a, b, c, and d as well. And furthermore, U2 did it 
+          on the same dates as U1. 
+          It's probably the case that U1 and U2 are the same guy!
+        """
         self.find_base_map()
-        for _ in range(n_iters):            
+        for _ in range(n_iters):
+            print(f"iteration {_} of {n_iters}. map has size {len(self.fighter_id_map)} fighters mapped")
             # update mapping greedily
             # find missing fighter_id1 with most fights with known opponent_id1
             # okay, find fighter_id1s with missing fighter_id2s
@@ -111,6 +143,7 @@ class IsomorphismFinder(object):
             if len(df_inner) == 0:
                 self.stray_fights = df1_sub
                 break
+        return self.fighter_id_map
     
     @staticmethod
     def clean_names(names):
@@ -139,6 +172,12 @@ class IsomorphismFinder(object):
         names = names.fillna("").str.strip().str.lower()\
                 .replace(to_replace=to_replace, value=value)
         return names
+
+manual_bfo_ufc_mapping = {
+    # there are many duplicate pages for the same fighter in bestfightodds
+    # however, ufcstats seems to be pretty good at keeping only one page per fighter
+    # so multiple bestfightodds IDs map to the same ufcstats ID
+}
 
 manual_ufc_espn_mapping = {
     # chris brennan

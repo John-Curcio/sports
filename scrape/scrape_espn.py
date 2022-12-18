@@ -12,7 +12,8 @@ from io import StringIO
 from lxml import html
 
 import boto3
-from base_scrape import base_db_interface, BasePageScraper
+from scrape.base_scrape import BasePageScraper
+from db import base_db_interface
 
 headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/46.0.2490.80 Safari/537.36',
@@ -215,7 +216,7 @@ class UpcomingEspnScraper(BasePageScraper):
     def write_all_to_tables(self):
         pass
 
-if __name__ == "__main__":
+def main():
     TEST_HISTORICAL = False
     TEST_UPCOMING = True
     if TEST_HISTORICAL:

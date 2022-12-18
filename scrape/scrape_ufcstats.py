@@ -3,7 +3,8 @@ FullUfcScraper.scrape_all() and FullUfcScraper.write_all_to_tables() are
 probably the most useful bits of code in this module
 """
 
-from base_scrape import BasePageScraper, base_db_interface
+from scrape.base_scrape import BasePageScraper
+from db import base_db_interface
 import pandas as pd
 import numpy as np
 import string
@@ -448,8 +449,8 @@ class UpcomingUfcScraper(BasePageScraper):
                 )
         return None
 
-if __name__ == "__main__":
-    TEST_HISTORICAL = False 
+def main():
+    TEST_HISTORICAL = True 
     TEST_UPCOMING = True
     if TEST_HISTORICAL:
         url_scraper = UfcUrlScraper()
