@@ -353,7 +353,6 @@ class BfoOddsScraper(object):
                 table_name="bfo_fighter_odds",
                 df=match_df,
             )
-            assert False
         return None
 
 

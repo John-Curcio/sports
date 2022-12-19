@@ -52,15 +52,27 @@ class DbInterface(object):
                 index=False
             )
         except ValueError:
+            # print("okay, apparently the table already exists. let's append new rows")
             # if the table already exists, append new rows
             # I do this in a hacky way: I read all the data into memory, 
             # then concat old data with new data. then i check the result 
             # for duplicates and drop them, favoring new data. Then I 
             # overwrite all the data in the original table. 
+            #print(df.iloc[0])
             df_old = self.read(table_name)
-            df_new = pd.concat([df_old, df])
+            # print("df_old shape: ", df_old.shape)
+            # print(df_old.iloc[0])
+            # print("----")
+            # print(df_old.head())
+            df_new = pd.concat([
+                df_old.set_index(["FighterHref", "OpponentHref", "Date"]),
+                df.set_index(["FighterHref", "OpponentHref", "Date"])
+            ])
+            # print("df_new shape: ", df_new.shape)
             # in the case of duplicate rows, use the result from df, which is more recent
             df_new = df_new.loc[~df_new.index.duplicated(keep="last")]
+            df_new = df_new.reset_index()
+            # print("df_new shape after dropping duplicates: ", df_new.shape)
             return df_new.to_sql(
                 table_name, 
                 con=self._con, 
