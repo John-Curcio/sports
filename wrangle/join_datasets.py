@@ -4,14 +4,14 @@ import numpy as np
 
 class IsomorphismFinder(object):
     """
-    Learn mapping btw FighterIDs in df1 and FighterIDs in df2
+    Learn map btw FighterIDs in df1 and FighterIDs in df2
 
     TODO: IIRC we prefer that it's a bijection ofc, but may have 
     to settle for a surjection, and I think it's supposed to be 
     FighterID1 --> FighterID2. But I'm not sure!!!
     """
     
-    def __init__(self, df1, df2, manual_mapping=None):
+    def __init__(self, df1, df2, manual_map=None):
         self.df1 = self.get_double_df(df1)
         self.df2 = self.get_double_df(df2)
         self.frontier_fighter_id1_vals = pd.concat([self.df1["FighterID"], 
@@ -22,8 +22,8 @@ class IsomorphismFinder(object):
             for col in ["FighterName", "OpponentName"]:
                 df[col] = self.clean_names(df[col])
         self.fighter_id_map = pd.Series(dtype='object')
-        if manual_mapping is not None:
-            index, vals = zip(*manual_mapping.items()) # gets keys and values of dict respectively
+        if manual_map is not None:
+            index, vals = zip(*manual_map.items()) # gets keys and values of dict respectively
             self.fighter_id_map = pd.Series(vals, index=index, dtype='object')
         self.conflict_fights = None
         
@@ -173,13 +173,43 @@ class IsomorphismFinder(object):
                 .replace(to_replace=to_replace, value=value)
         return names
 
-manual_bfo_ufc_mapping = {
+manual_bfo_ufc_map = {
     # there are many duplicate pages for the same fighter in bestfightodds
     # however, ufcstats seems to be pretty good at keeping only one page per fighter
     # so multiple bestfightodds IDs map to the same ufcstats ID
 }
 
-manual_ufc_espn_mapping = {
+manual_bfo_overwrite_map = {
+    '/fighters/Shintaro-Ishiwatar-1151': '/fighters/Shintaro-Ishiwatari-7509',
+    '/fighters/Paddy-Holohan-2786': '/fighters/Patrick-Holohan-4991',
+    '/fighters/Robert-McDaniel-4064': '/fighters/Bubba-McDaniel-744',
+    '/fighters/Nicholas-Musoke-4199': '/fighters/Nico-Musoke-2144',
+    '/fighters/Marco-Polo-Reyes-6679': '/fighters/Polo-Reyes-5991',
+    '/fighters/Pingyuan-Liu-7732': '/fighters/Liu-Pingyuan-8739',
+    '/fighters/Luis-Luna-7785': '/fighters/Anselmo-Luis-Luna-Jr-4330',
+    '/fighters/Jung-Bu-Kyung-670': '/fighters/Bukyung-Jung-445',
+    '/fighters/Brianna-van-Buren-4076': '/fighters/Brianna-Fortino-13884',
+    '/fighters/J-J-Ambrose-12683': '/fighters/J-J-Ambrose-459',
+    '/fighters/Anthony-Waldburger-1564': '/fighters/T-J-Waldburger-2156',
+    '/fighters/Jadamba-Narantungalag-2028': '/fighters/Narantungalag-Jadambaa-6335', 
+#     '/fighters/Narantungalag-Jadambaa-6335': '/fighters/Jadamba-Narantungalag-2028',
+    '/fighters/Raquel-Paaluhi-2813': '/fighters/Raquel-Pa-aluhi-5257',
+    '/fighters/Rodrigo-Cavalheiro-Correia-5516': '/fighters/Rodrigo-Cavalheiro-4743',
+    '/fighters/Jesse-Miele-5797': '/fighters/Jessy-Miele-8855',
+    '/fighters/Jp-Buys-12275': '/fighters/J-P-Buys-7455',
+    '/fighters/Levy-Marroquin-9617': '/fighters/Levy-Saul-Marroquin-7713',
+    '/fighters/Guilherme-Faria-8090': '/fighters/Guillerme-Faria-12163',
+    '/fighters/Gabriel-Green-6587': '/fighters/Gabe-Green-10506',
+    '/fighters/Philip-Rowe-9379': '/fighters/Phil-Rowe-9898',
+    '/fighters/Phillip-Rowe-11319': '/fighters/Phil-Rowe-9898',
+    '/fighters/Aleksandra-Albu-5539': '/fighters/Alexandra-Albu-7261',
+    '/fighters/Bazigit-Ataev-8579': '/fighters/Bozigit-Ataev-9050',
+    '/fighters/Khalil-Rountree-Jr-11552': '/fighters/Khalil-Rountree-4935',
+    '/fighters/Khalil-Rountree-Jr-13118': '/fighters/Khalil-Rountree-4935',
+    '/fighters/Sumudaerji-Sumudaerji-8746': '/fighters/Su-Mudaerji-9345',
+}
+
+manual_ufc_espn_map = {
     # chris brennan
     "http://ufcstats.com/fighter-details/b19fc66613dc75b9": "2500426",
     # courtney turner
@@ -242,7 +272,7 @@ manual_ufc_espn_mapping = {
     'http://ufcstats.com/fighter-details/daf9be103c1edbbd': '2965044',
 }
 
-manual_espn_bfo_mapping = {
+manual_espn_bfo_map = {
     # 3041602/brianna-fortino
     '3041602': '/fighters/Brianna-Fortino-13884',
     # /3153355/uyran-carlos
@@ -386,6 +416,31 @@ def join_espn_and_bfo(espn_df, bfo_df, espn_bfo_fighter_id_map):
                          how="left")
 
 
+def join_ufc_and_bfo(ufc_df, bfo_df):
+    for df in [ufc_df, bfo_df]:
+        df["Date"] = pd.to_datetime(df["Date"])
+        for col in ["FighterName", "OpponentName"]:
+            df[col] = df[col].str.lower().str.strip()
+    # clean up bfo fighter IDs
+    bfo_df_clean = bfo_df.assign(
+        FighterID=bfo_df["FighterID"].replace(to_replace=manual_bfo_overwrite_map),
+        OpponentID=bfo_df["OpponentID"].replace(to_replace=manual_bfo_overwrite_map),
+    )
+    # these fights didn't end up happening
+    drop_pairs = [
+        ('/fighters/Gabriel-Bonfim-11752', '/fighters/Carlos-Leal-Miranda-7744'),
+        ('/fighters/Gabriel-Bonfim-11752', '/fighters/Diego-Dias-11750'),
+    ]
+    drop_inds = np.any([
+        bfo_df_clean["FighterID"].isin(drop_pair) & bfo_df_clean["OpponentID"].isin(drop_pair)
+        for drop_pair in drop_pairs
+    ], axis=0)
+    bfo_df_clean = bfo_df_clean.loc[~drop_inds]
+
+    # find mapping btw ufc IDs and bfo IDs
+    iso_finder = IsomorphismFinder(bfo_df, ufc_df, manual_bfo_ufc_map)
+    iso_finder.find_isomorphism(n_iters=20)
+
 def main():
     espn_df = pd.read_csv("data/espn_data.csv").rename(columns={
         "Name": "FighterName",
@@ -419,7 +474,7 @@ def main():
         OpponentID=espn_df["OpponentID"].replace(to_replace=fighter_id_map),
     )
     # find mapping btw ufc IDs and espn IDs
-    iso_finder = IsomorphismFinder(ufc_df, espn_df_clean, manual_ufc_espn_mapping)
+    iso_finder = IsomorphismFinder(ufc_df, espn_df_clean, manual_ufc_espn_map)
     iso_finder.find_isomorphism(n_iters=20)
     
     # okay great, now that we have the mapping, let's join ufc data and espn data
@@ -455,7 +510,6 @@ def main():
         '/fighters/Khalil-Rountree-Jr-11552': '/fighters/Khalil-Rountree-4935',
         '/fighters/Khalil-Rountree-Jr-13118': '/fighters/Khalil-Rountree-4935',
         '/fighters/Sumudaerji-Sumudaerji-8746': '/fighters/Su-Mudaerji-9345',
-
     }
 
     bfo_df_clean = bfo_df.assign(
@@ -473,7 +527,7 @@ def main():
     ], axis=0)
     bfo_df_clean = bfo_df_clean.loc[~drop_inds]
 
-    bfo_iso_finder = IsomorphismFinder(espn_df_clean, bfo_df_clean, manual_espn_bfo_mapping)
+    bfo_iso_finder = IsomorphismFinder(espn_df_clean, bfo_df_clean, manual_espn_bfo_map)
     bfo_iso_finder.find_isomorphism(n_iters=20)
 
     bfo_ufc_espn_df = join_espn_and_bfo(ufc_espn_df, bfo_df_clean, bfo_iso_finder.fighter_id_map)

@@ -360,7 +360,7 @@ def main():
     # max_iters = 2
     max_iters = np.inf
     bfo = BfoOddsScraper(max_iters=max_iters)
-    # bfo.scrape_and_write_all_fighter_urls()
+    bfo.scrape_and_write_all_fighter_urls()
     bfo.scrape_and_write_opening_odds()
     print("done!")
     
