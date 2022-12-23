@@ -1,15 +1,16 @@
 import numpy as np
 import pandas as pd
+from db import base_db_interface
 
 
 class UfcDataCleaner(object):
     # I still havent' figured out what to do with round stats!
 
-    def __init__(self, totals_path, strikes_path, events_path, desc_path):
-        self.totals_df = pd.read_csv(totals_path)
-        self.strikes_df = pd.read_csv(strikes_path)
-        self.event_df = pd.read_csv(events_path)
-        self.desc_df = pd.read_csv(desc_path)
+    def __init__(self):
+        self.totals_df = base_db_interface.read("ufc_totals")
+        self.strikes_df = base_db_interface.read("ufc_strikes")
+        self.event_df = base_db_interface.read("ufc_events")
+        self.desc_df = base_db_interface.read("ufc_fight_description")
 
         self.clean_totals_df = None 
         self.clean_strikes_df = None 
@@ -112,7 +113,7 @@ class UfcDataCleaner(object):
         round_formats = time_format.str.split("(").str[1].str[:-1]\
             .apply(lambda x: [int(s) for s in x.split("-")])
         max_time = round_formats.apply(np.sum) * 60
-        round_index = (df["round_description"] - 1)
+        round_index = (df["round_description"].astype(int) - 1)
         time_dur = pd.Series(
             [np.sum(round_format[:final_round]) * 60 for final_round, round_format 
             in zip(round_index, round_formats)]
@@ -150,10 +151,19 @@ class UfcDataCleaner(object):
             set(self.clean_events_df.columns) | 
             set(self.clean_desc_df.columns)
         ) - {"FightID"}
-        self.ufc_df = fighter_rows.join(
+        ufc_df = fighter_rows.join(
             opponent_rows.drop(columns=drop_cols),
             lsuffix="", rsuffix="_opp"
         ).reset_index()
+        # last little bit of cleaning
+        ufc_df = ufc_df.rename(columns={
+            "FighterName_opp": "OpponentName",
+            "FighterID_opp": "OpponentID",
+        })
+        ufc_df["Date"] = pd.to_datetime(ufc_df["Date"])
+        for col in ["FighterName", "OpponentName"]:
+            ufc_df[col] = ufc_df[col].str.lower().str.strip()
+        self.ufc_df = ufc_df
         return self.ufc_df 
 
 

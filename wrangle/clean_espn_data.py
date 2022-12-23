@@ -1,13 +1,21 @@
 import pandas as pd
 import numpy as np
+from db import base_db_interface
+"""
+bfo_fighter_odds       espn_stats             ufc_round_totals
+bfo_fighter_urls       ufc_events             ufc_strikes
+espn_bio               ufc_fight_description  ufc_totals
+espn_matches           ufc_fighters           ufc_upcoming_fights
+espn_missed_fighters   ufc_round_strikes
+"""
 
 
 class EspnDataCleaner(object):
 
-    def __init__(self, stats_path, bio_path, match_path):
-        stats_df = pd.read_csv(stats_path)
-        self.bio_df = pd.read_csv(bio_path)
-        match_df = pd.read_csv(match_path)
+    def __init__(self):
+        stats_df = base_db_interface.read("espn_stats")
+        bio_df = base_db_interface.read("espn_bio")
+        match_df = base_db_interface.read("espn_matches")
 
         for df in [stats_df, match_df]:
             df["Date"] = pd.to_datetime(df["Date"])
@@ -18,6 +26,7 @@ class EspnDataCleaner(object):
         
         self.match_df = match_df 
         self.stats_df = stats_df 
+        self.bio_df = bio_df
 
         self.clean_stats_df = None 
         self.clean_bio_df = None 
@@ -56,13 +65,12 @@ class EspnDataCleaner(object):
         bio_df0["HeightInches"] = bio_df0["HeightInches"].fillna(ht)
 
         def get_clean_dob(s):
-            if s is np.nan:
-                return None
             if s.endswith(")"):
                 s = s[:-len(" (67)")]
             return pd.to_datetime(s)
 
-        bio_df0["DOB"] = bio_df0["DOB"].apply(get_clean_dob)
+        bio_df0["DOB"] = bio_df0["Birthdate"].fillna("").apply(get_clean_dob)
+        bio_df0 = bio_df0.drop(columns=["Birthdate"]) # redundant, I like the name DOB more
 
         self.clean_bio_df = bio_df0.drop(columns=["Reach", "HT/WT", "Weight", "Height"])
         return self.clean_bio_df
@@ -155,7 +163,7 @@ class EspnDataCleaner(object):
             suffixes=("", "_opp"),
         )
 
-        self.espn_df = match_stat_df.merge(
+        espn_df = match_stat_df.merge(
             self.clean_bio_df,
             on="FighterID",
             how="left",
@@ -166,17 +174,15 @@ class EspnDataCleaner(object):
             how="left",
             suffixes=("", "_opp"),
         )
+        # last little bit of cleaning
+        espn_df = espn_df.rename(columns={
+            "Name": "FighterName",
+            "Name_opp": "OpponentName",
+        })
+        espn_df["Date"] = pd.to_datetime(espn_df["Date"])
+        for col in ["FighterName", "OpponentName"]:
+            espn_df[col] = espn_df[col].str.lower().str.strip()
+
+        self.espn_df = espn_df
         return self.espn_df
 
-
-if __name__ == "__main__":
-
-    folder = "scrape/scraped_data/mma/espn/"
-    bio_path = folder+"espn_bios_2022-05-20.csv"
-    stats_path = folder+"espn_stats_2022-05-20.csv"
-    match_path = folder+"espn_matches_2022-05-20.csv"
-
-    DC = EspnDataCleaner(stats_path, bio_path, match_path)
-    DC.parse_all()
-
-    DC.espn_df.to_csv("data/espn_data.csv", index=False)
