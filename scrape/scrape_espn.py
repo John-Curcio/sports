@@ -45,6 +45,15 @@ class Fighter(object):
         html = r.text
         return BeautifulSoup(html, "lxml")
 
+    @staticmethod
+    def _get_opponent_href_if_exists(row_tag):
+        # fighters with pages like https://www.espn.com/mma/fighter/history/_/id/4275487/yan-xiaonan
+        # pose a challenge. note the "TBA" at the bottom
+        a = row_tag.find("a", href=True)
+        if a is None:
+            return None
+        return a["href"]
+
     def scrape_stats(self):
         # get match statistics, like takedown accuracy or advance to mount or whatever
         stats_soup = self.get_soup("stats")
@@ -59,7 +68,9 @@ class Fighter(object):
             curr_df = self._scrape_table(table_tag)
             # TODO TODO TODO get opponent IDs here, join with stats_df
             row_tags = table_tag.find_all("tr", {"class": "Table__TR Table__TR--sm Table__even"})
-            opponent_ids = [row_tag.find("a", href=True)["href"] for row_tag in row_tags]
+            # row_tags = table_tag.find_all("a", {"class": "AnchorLink tl"})
+            opponent_ids = [self._get_opponent_href_if_exists(row_tag) for row_tag in row_tags]
+            # opponent_ids = [row_tag.find("a", href=True)["href"] for row_tag in row_tags]
             curr_df["OpponentID"] = opponent_ids
             stat_df_list.append(curr_df)
         merge_on = ['Date', 'Opponent', 'Event', 'Res.', 'OpponentID']
@@ -80,8 +91,10 @@ class Fighter(object):
         match_soup = self.get_soup("history")
         self.match_df = self._scrape_table(match_soup)
         # TODO get opponent IDs here, join with match_df
+        # row_tags = match_soup.find_all("a", {"class": "AnchorLink tl"})
         row_tags = match_soup.find_all("tr", {"class": "Table__TR Table__TR--sm Table__even"})
-        opponent_ids = [row_tag.find("a", href=True)["href"] for row_tag in row_tags]
+        # opponent_ids = [row_tag.find("a", href=True)["href"] for row_tag in row_tags]
+        opponent_ids = [self._get_opponent_href_if_exists(row_tag) for row_tag in row_tags]
         self.match_df["OpponentID"] = opponent_ids
         # for link in table_body.find_all("a", href=True):
         #     fighter_urls.append("https://espn.com" + link["href"])
@@ -105,13 +118,16 @@ class Fighter(object):
 
 class FighterSearchScraper(object):
 
-    def __init__(self, n_fighters=np.inf, n_pages=np.inf, start_letter="a", end_letter="z"):
+    def __init__(self, n_fighters=np.inf, n_pages=np.inf, start_letter="a", end_letter="z",
+                max_missed_fighter_retries=10):
         self.n_fighters = n_fighters
         self.n_pages = n_pages
         self.fighters = None
         self.stats_df = None
         self.bio_df = None
         self.matches_df = None
+        self.missed_fighters_df = None
+        self.max_missed_fighter_retries = max_missed_fighter_retries
         self.start_letter = start_letter.lower()
         self.end_letter = end_letter.lower()
         
@@ -131,7 +147,6 @@ class FighterSearchScraper(object):
         fighter_urls = []
         fighters = []
         base_url = "http://www.espn.com/mma/fighters?search="
-        missed_fighters = []
         for letter in [chr(x) for x in range(ord(self.start_letter), ord(self.end_letter)+1)]:
             curr_url = base_url + letter
             fighter_urls.extend(self.get_fighter_urls(curr_url))
@@ -150,46 +165,89 @@ class FighterSearchScraper(object):
         stats_list = []
         bio_list = []
         matches_list = []
-        missed_fighters = []
         if not verbose:
             fighters = tqdm(fighters)
-        for fighter in fighters:
+        def _scrape_fighter_success(fighter, print_missing_fighter=False):
             if verbose:
                 print(fighter.base_url)
             # update bio_df, stats_df, and matches_df
             try:
                 if bio:
                     curr_bio_df = fighter.scrape_bio()
+                    if print_missing_fighter:
+                        print("scraped bio!")
                     curr_bio_df["FighterID"] = fighter.fighter_id
                     bio_list.append(curr_bio_df)
                 if stats:
                     curr_stats_df = fighter.scrape_stats()
+                    if print_missing_fighter:
+                        print("scraped stats!")
+                        print(curr_stats_df)
                     curr_stats_df["FighterID"] = fighter.fighter_id
                     stats_list.append(curr_stats_df)
                 if matches:
                     curr_matches_df = fighter.scrape_matches()
+                    if print_missing_fighter:
+                        print("scraped matches!")
                     curr_matches_df["FighterID"] = fighter.fighter_id
                     matches_list.append(curr_matches_df)
+                return True
             except:
-                missed_fighters.append(fighter.base_url)
+                return False
+        
+        missed_fighters = []
+        for fighter in fighters:
+            if not _scrape_fighter_success(fighter):
+                missed_fighters.append(fighter)
+        print("failed to scrape the following fighters:")
+        for fighter in missed_fighters:
+            print(fighter.base_url)
+        # self._missed_fighters = foo
+        # for _ in range(self.max_missed_fighter_retries):
+        #     if len(foo) == 0:
+        #         break
+        #     for fighter in foo:
+        #         if _scrape_fighter_success(fighter, print_missing_fighter=True):
+        #             foo.remove(fighter)
+        # the _scrape_fighter function appends fighters that couldn't be 
+        # scraped to self._missed_fighters. Here, we try to scrape those
+        # fighters again. And if they don't want to be scraped, well, we
+        # scrape em again and again and again until they give in (or we give up)
+        # for _ in range(self.max_missed_fighter_retries):
+        #     if len(self._missed_fighters) == 0:
+        #         break
+        #     print("scraping ", len(self._missed_fighters), "missed fighters")
+        #     _missed_fighters_copy = self._missed_fighters
+        #     self._missed_fighters = []
+        #     for fighter in _missed_fighters_copy:
+        #         _scrape_fighter(fighter, print_missing_fighter=True)
         if stats:
             self.stats_df = pd.concat(stats_list)
         if bio:
             self.bio_df = pd.concat(bio_list) 
         if matches:
             self.matches_df = pd.concat(matches_list)
-        self.missed_fighters = pd.DataFrame({"fighter_url": missed_fighters})
+        self.missed_fighters_df = pd.DataFrame({
+            "fighter_url": list(set([f.base_url for f in missed_fighters]))
+        })
+        print("left with ", len(self.missed_fighters_df), " missed fighters")
 
     def write_all_to_tables(self):
         for table_name, df in [
             ("espn_bio", self.bio_df),
             ("espn_stats", self.stats_df),
             ("espn_matches", self.matches_df),
-            ("espn_missed_fighters", self.missed_fighters)
+            ("espn_missed_fighters", self.missed_fighters_df)
         ]:
             if df is not None:
+                # print(df.columns)
+                # print(df.head())
+                # foo = base_db_interface.read(table_name=table_name)
+                # print(foo.columns)
+                # print(foo.head())
                 print(f"writing {len(df)} rows to {table_name}")
-                base_db_interface.write_update(
+                # base_db_interface.write_update(
+                base_db_interface.write_replace(
                     table_name=table_name, 
                     df=df
                 )
@@ -217,17 +275,14 @@ class UpcomingEspnScraper(BasePageScraper):
         pass
 
 def main():
-    TEST_HISTORICAL = False
+    TEST_HISTORICAL = True
     TEST_UPCOMING = True
     if TEST_HISTORICAL:
         start_letter, end_letter = "a", "z"
+        # start_letter, end_letter = "u", "v"
         foo = FighterSearchScraper(start_letter=start_letter, end_letter=end_letter)
         foo.run_scraper(bio=True, matches=True, stats=True)
         foo.write_all_to_tables()
-        # print(foo.stats_df.head())
-        # foo.stats_df.to_csv("scraped_data/mma/espn/{}_{}_stats_df.csv".format(start_letter, end_letter), index=False)
-        # foo.bio_df.to_csv("scraped_data/mma/espn/{}_{}_bio_df.csv".format(start_letter, end_letter), index=False)
-        # foo.matches_df.to_csv("scraped_data/mma/espn/{}_{}_matches_df.csv".format(start_letter, end_letter), index=False)
         print("done with fighters in letter range {}-{}".format(start_letter, end_letter))
     if TEST_UPCOMING:
         pass 
