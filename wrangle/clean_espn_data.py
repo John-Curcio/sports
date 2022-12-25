@@ -177,7 +177,8 @@ class EspnDataCleaner(object):
         # last little bit of cleaning
         espn_df = espn_df.rename(columns={
             "Name": "FighterName",
-            "Name_opp": "OpponentName",
+            # "Name_opp": "OpponentName",
+            "Opponent": "OpponentName",
         })
         espn_df["Date"] = pd.to_datetime(espn_df["Date"])
         for col in ["FighterName", "OpponentName"]:
