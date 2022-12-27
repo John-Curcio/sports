@@ -134,6 +134,22 @@ MANUAL_UFC_ESPN_MAP = {
     "132deb59abae64b1": "2554705",
 }
 
+FALSE_OVERWRITE_UFC_MAP = {
+    # some pages in bestfightodds.com actually comprise data for multiple fighters,
+    # who happen to have the same name. EG 
+    # joey gomez:
+    # https://www.bestfightodds.com/fighters/Joey-Gomez-6023 
+    # http://ufcstats.com/fighter-details/0778f94eb5d588a5
+    # http://ufcstats.com/fighter-details/3a28e1e641366308
+    # So when we're trying to join BFO and UFC data, we temporarily merge the
+    # UFC IDs for these fighters into one, and then split them again later.
+    
+    # joey gomez: Joey-Gomez-6023
+    "3a28e1e641366308": "0778f94eb5d588a5",
+    # bruno silva: Bruno-Silva-7121
+    "12ebd7d157e91701": "294aa73dbf37d281",
+}
+
 MANUAL_BFO_UFC_MAP = {
     ### current top ranked in each weight class
     # deiveson figueiredo
@@ -162,6 +178,21 @@ MANUAL_BFO_UFC_MAP = {
     "Weili-Zhang-7955": "1ebe20ebbfa15e29",
     # valentina shevchenko http://ufcstats.com/fighter-details/132deb59abae64b1
     "Valentina-Shevchenko-5475": "132deb59abae64b1",
+    ### manually resolving conflicts
+    # james terry was supposed to fight brett bergmark, but bergmark was pulled
+    # so terry ended up fighting david marshall
+    "James-Terry-1155": "5befa793316d3469",
+    "Brett-Bergmark-1973": "2891c9f7b26b26fc",
+    # loma lookboonmee was supposed to fight diana belbirr/belbita, but belbita was pulled
+    # so lookboonmee ended up fighting denise gomes
+    "Loma-Lookboonmee-7834": "4e30e4250cb08b61",
+    "Diana-Belbirr-13003": "d7e40dca3ae125be",
+    "Denise-Gomes-13433": "cffb87059e645bd1",
+    # gerald meerschaert was supposed to fight abusupiyan magomedov on Dec 18, 2021
+    # but meerschaert ended up fighting dustin stoltzfus
+    "Gerald-Meerschaert-3628": "6ac9bc2953c47345",
+    "Abusupiyan-Magomedov-8265": "36b8f265bcd1b7a4",
+    "Dustin-Stoltzfus-10214": "71505842fb6455c3",
 }
 
 MANUAL_BFO_ESPN_MAP = {

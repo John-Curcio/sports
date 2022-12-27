@@ -9,7 +9,7 @@ from db import base_db_interface
 
 def clean_all():
     print("--- find mapping ufcstats --> espn ---")
-    # join_datasets.find_ufc_espn_mapping()
+    join_datasets.find_ufc_espn_mapping()
     print("--- find mapping bfo --> ufc ---")
     join_datasets.find_bfo_ufc_mapping()
     print("--- done! ---")
