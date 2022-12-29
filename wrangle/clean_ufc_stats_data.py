@@ -9,21 +9,29 @@ class UfcDataCleaner(object):
     def __init__(self):
         self.totals_df = base_db_interface.read("ufc_totals")
         self.strikes_df = base_db_interface.read("ufc_strikes")
-        self.event_df = base_db_interface.read("ufc_events")
+        self.events_df = base_db_interface.read("ufc_events")
         self.desc_df = base_db_interface.read("ufc_fight_description")
 
         self.clean_totals_df = None 
         self.clean_strikes_df = None 
         self.clean_events_df = None 
         self.clean_desc_df = None
+
+    @staticmethod
+    def get_clean_fighter_id(fighter_id_vec):
+        return fighter_id_vec.str.split("/fighter-details/").str[1]
         
     def _parse_totals(self):
+        """
+        Get clean_totals_df, a cleaned version of totals_df
+        """
         totals_clean_df = self.totals_df.rename(columns={
             "Sub. att": "SM",
             "Rev.": "RV",
         })
+        totals_clean_df["FighterID"] = self.get_clean_fighter_id(totals_clean_df["FighterID"])
         totals_clean_df["SSL"] = np.nan
-        inds = totals_clean_df["Sig. str."].str.contains("of")
+        # inds = totals_clean_df["Sig. str."].str.contains("of")
         totals_clean_df["SSL"] = totals_clean_df["Sig. str."].str.split("of").str[0].astype(int)
         totals_clean_df["SSA"] = totals_clean_df["Sig. str."].str.split("of").str[1].astype(int)
         totals_clean_df["TSL"] = totals_clean_df["Total str."].str.split("of").str[0].astype(int)
@@ -43,7 +51,11 @@ class UfcDataCleaner(object):
         return self.clean_totals_df
 
     def _parse_strikes(self):
+        """
+        Get clean_strikes_df, a cleaned version of the ufc_strikes table.
+        """
         strikes_clean_df = self.strikes_df.copy()
+        strikes_clean_df["FighterID"] = self.get_clean_fighter_id(strikes_clean_df["FighterID"])
         strikes_clean_df["SHL"] = strikes_clean_df["Head"].str.split("of").str[0].astype(int)
         strikes_clean_df["SHA"] = strikes_clean_df["Head"].str.split("of").str[1].astype(int)
 
@@ -67,13 +79,24 @@ class UfcDataCleaner(object):
         ])
 
     def _parse_events(self):
-        event_clean_df = self.event_df.rename(columns={
+        """
+        Get clean_events_df, a cleaned version of events_df, which is 
+        from the ufc_events table in mma.db
+        """
+        event_clean_df = self.events_df.rename(columns={
             "Weight class": "weight_class",
             "Method": "method",
             "Round": "round", 
             "Location": "location",
-        })[["weight_class", "method", "round", "location", "img_png_url",
-            "Time", "is_title_fight", "FightID", "EventUrl", "Date"]]
+            "FighterUrl": "FighterID",
+            "OpponentUrl": "OpponentID",
+            "Kd": "KD_event_str",
+            "Str": "Str_event_str",
+            "Td": "Td_event_str",
+            "Sub": "Sub_event_str",
+        })
+        event_clean_df["FighterID"] = self.get_clean_fighter_id(event_clean_df["FighterID"])
+        event_clean_df["OpponentID"] = self.get_clean_fighter_id(event_clean_df["OpponentID"])
         event_clean_df["time_seconds"] = (
             event_clean_df["Time"].str.split(":").str[0].astype(int) * 60 +
             event_clean_df["Time"].str.split(":").str[1].astype(int)
@@ -122,49 +145,51 @@ class UfcDataCleaner(object):
 
 
     def parse_all(self):
+        """
+        Parse ufc_events, ufc_strikes, ufc_totals, ufc_fight_description,
+        and merge them into a single dataframe, ufc_df. 
+        ufc_df should have one row per fight, and columns for all the information
+        about the fight.
+        """
         self._parse_events()
         self._parse_strikes()
         self._parse_totals()
         self._parse_descriptions()
-        temp_ufc_df = self.clean_totals_df.merge(
-            self.clean_strikes_df.drop(columns=["Fighter"]),
-            on=["FighterID", "FightID"],
-            how="inner",
-        ).merge(
-            self.clean_events_df,
-            on=["FightID"],
-            how="inner",
-        ).merge(
+
+        # merge events with descriptions
+        temp_ufc_df = self.clean_events_df.merge(
             self.clean_desc_df,
             on=["FightID"],
             how="left",
-        ).rename(columns={
-            "Fighter": "FighterName",
-        })
-
-        fighter_rows = temp_ufc_df.groupby("FightID").first()
-        opponent_rows = temp_ufc_df.groupby("FightID").last()
-        # Drop columns about the event or the fight description
-        # from the opponent rows because they're redundant. Still
-        # need FightID though
-        drop_cols = (
-            set(self.clean_events_df.columns) | 
-            set(self.clean_desc_df.columns)
-        ) - {"FightID"}
-        ufc_df = fighter_rows.join(
-            opponent_rows.drop(columns=drop_cols),
-            lsuffix="", rsuffix="_opp"
-        ).reset_index()
-        # last little bit of cleaning
-        ufc_df = ufc_df.rename(columns={
-            "FighterName_opp": "OpponentName",
-            "FighterID_opp": "OpponentID",
-        })
-        ufc_df["Date"] = pd.to_datetime(ufc_df["Date"])
-        for col in ["FighterName", "OpponentName"]:
-            ufc_df[col] = ufc_df[col].str.lower().str.strip()
-        self.ufc_df = ufc_df
-        return self.ufc_df 
+        )
+        # add totals for fighter and opponent
+        temp_ufc_df = temp_ufc_df.merge(
+            self.clean_totals_df.drop(columns=["Fighter"]),
+            on=["FighterID", "FightID"],
+            how="left",
+        ).merge(
+            self.clean_totals_df.drop(columns=["Fighter"]).rename(columns={
+                "FighterID": "OpponentID",
+            }),
+            on=["OpponentID", "FightID"],
+            how="left",
+            suffixes=("_fighter", "_opponent")
+        )
+        # add strikes for fighter and opponent
+        temp_ufc_df = temp_ufc_df.merge(
+            self.clean_strikes_df.drop(columns=["Fighter"]),
+            on=["FighterID", "FightID"],
+            how="left",
+        ).merge(
+            self.clean_strikes_df.drop(columns=["Fighter"]).rename(columns={
+                "FighterID": "OpponentID",
+            }),
+            on=["OpponentID", "FightID"],
+            how="left",
+            suffixes=("_fighter", "_opponent")
+        )
+        self.ufc_df = temp_ufc_df
+        return self.ufc_df
 
 
 

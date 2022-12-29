@@ -15,21 +15,21 @@ def clean_all():
     print("--- done! ---")
 
 
-    # print("--- clean ufcstats data ---")
-    # ufc_dc = UfcDataCleaner()
-    # ufc_dc.parse_all()
-    # base_db_interface.write_replace(
-    #     table_name="ufc_stats_df", 
-    #     df=ufc_dc.ufc_df
-    # )
+    print("--- clean ufcstats data ---")
+    ufc_dc = UfcDataCleaner()
+    ufc_dc.parse_all()
+    base_db_interface.write_replace(
+        table_name="ufc_stats_df", 
+        df=ufc_dc.ufc_df
+    )
 
-    # print("--- clean espn data ---")
-    # espn_dc = EspnDataCleaner()
-    # espn_dc.parse_all()
-    # base_db_interface.write_replace(
-    #     table_name="espn_data",
-    #     df=espn_dc.espn_df
-    # )
+    print("--- clean espn data ---")
+    espn_dc = EspnDataCleaner()
+    espn_dc.parse_all()
+    base_db_interface.write_replace(
+        table_name="espn_data",
+        df=espn_dc.espn_df
+    )
 
     # print("--- clean bestfightodds data ---")
     # bfo_fighter_odds_df = base_db_interface.read("bfo_fighter_odds")
