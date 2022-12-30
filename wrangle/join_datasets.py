@@ -14,6 +14,7 @@ def get_fight_id(fighter_id, opponent_id, date):
                         opponent_id.fillna("unknown"))
     min_id = np.minimum(fighter_id.fillna("unknown"),
                         opponent_id.fillna("unknown"))
+    date = pd.to_datetime(date).dt.date
     return date.astype(str) + "_" + min_id + "_" + max_id
 
 
@@ -516,10 +517,10 @@ def join_bfo_espn_ufc(bfo_df, espn_df, ufc_df):
     the data later than it is to expand it.
     """
     print("loading bfo_to_ufc_fight_id_map")
-    bfo_ufc_df = base_db_interface.read_table("bfo_to_ufc_fight_id_map")
+    bfo_to_ufc_fight_id_map_df = base_db_interface.read("bfo_to_ufc_fight_id_map")
     print("loading espn_to_ufc_fight_id_map")
-    espn_ufc_df = base_db_interface.read_table("espn_to_ufc_fight_id_map")
-    # use espn and ufc mapping
+    ufc_to_espn_fight_id_map_df = base_db_interface.read("ufc_to_espn_fight_id_map")
+    # assign native fight ids
     espn_df = espn_df.assign(
         espn_fight_id=get_fight_id(
             espn_df["FighterID"],
@@ -532,38 +533,87 @@ def join_bfo_espn_ufc(bfo_df, espn_df, ufc_df):
         ufc_df["OpponentID"],
         ufc_df["Date"]
     )
-    ufc_df["espn_fight_id"] = ufc_df["ufc_fight_id"].map(
-        espn_ufc_df.set_index("ufc_fight_id")["espn_fight_id"]
-    )
-    # use bfo and ufc mapping
     bfo_df["bfo_fight_id"] = get_fight_id(
         bfo_df["FighterID"],
         bfo_df["OpponentID"],
         bfo_df["Date"]
     )
+    # use espn and ufc mapping
+    ufc_df["espn_fight_id"] = ufc_df["ufc_fight_id"].map(
+        ufc_to_espn_fight_id_map_df.set_index("ufc_fight_id")["espn_fight_id"]
+    )
+    # use bfo and ufc mapping
+    # TODO this doesn't work!!! what the heck???
     bfo_df["ufc_fight_id"] = bfo_df["bfo_fight_id"].map(
-        bfo_ufc_df.set_index("bfo_fight_id")["ufc_fight_id"]
+        bfo_to_ufc_fight_id_map_df.set_index("bfo_fight_id")["ufc_fight_id"]
     )
     # join espn and ufc
     print("joining espn and ufc data")
+    # I think espn is the master dataset, so I'm going to do a left join
+    # espn_ufc_df = espn_df.merge(
+    #     ufc_df, on="espn_fight_id", how="outer",
+    #     suffixes=("_espn", "_ufc")
+    # )
+    cols_to_drop = [ 
+        # these columns are all present in espn_df, so we don't need to
+        # include them in the merge
+        "Date", "FighterName", "OpponentName", 
+        "FighterID", "OpponentID",
+    ]
     espn_ufc_df = espn_df.merge(
-        ufc_df, on="espn_fight_id", how="outer"
+        ufc_df.drop(columns=cols_to_drop).dropna(subset=["espn_fight_id"]), 
+        on="espn_fight_id", how="left",
+        suffixes=("_espn", "_ufc")
     )
-    # join bfo and ufc
-    print("joining bfo and ufc data")
-    bfo_ufc_df = bfo_df.merge(
-        ufc_df, on="ufc_fight_id", how="outer"
+    # Now let's add BFO data
+    joined_df = espn_ufc_df.merge(
+        bfo_df.drop(columns=cols_to_drop).dropna(subset=["ufc_fight_id"]),
+        on="ufc_fight_id", how="left",
     )
+
+    """
+    # print("joining bfo and ufc data")
+    # bfo_ufc_df = bfo_df.drop(columns=cols_to_drop).merge(
+    #     ufc_df.drop(columns=cols_to_drop), 
+    #     on="ufc_fight_id", how="outer",
+    #     suffixes=("_bfo", "_ufc")
+    # )
+    
+    cols_to_keep = sorted(set(bfo_df.columns) - set(cols_to_drop) + {"ufc_fight_id"})
+    bfo_ufc_df = bfo_ufc_df[cols_to_keep]
+
+    # TODO need to drop a few columns
     print("joining em all")
-    left = bfo_ufc_df.merge(
-        espn_ufc_df, on="espn_fight_id", how="left"
+
+    joined_df = espn_ufc_df.merge(
+        bfo_ufc_df.dropna(subset=["ufc_fight_id"])[ 
+            bfo_df.columns
+        ], 
+        on="ufc_fight_id", 
+        how="left",
     )
-    right = bfo_ufc_df.merge(
-        espn_ufc_df, on="espn_fight_id", how="right"
+
+    # If I were to do an outer join btw bfo_ufc_df and espn_ufc_df, I would get
+    # the an obscenely large number of rows, because there are so many fights
+    # with null keys (espn_fight_id). 
+    
+    # okay uhhh let me think step by step here. 
+    # I want to join bfo_ufc_df and espn_ufc_df on ufc_fight_id. 
+    inner_join_df = bfo_ufc_df.merge(
+        espn_ufc_df.dropna(subset=["ufc_fight_id"]), 
+        on="ufc_fight_id", how="inner"
     )
-    joined_df = pd.concat([left, right]).drop_duplicates(
+    # TODO no idea what's going on here. But there's definitely a bug here.
+    left_complement = bfo_ufc_df.loc[~bfo_ufc_df["ufc_fight_id"].isin(
+        inner_join_df["ufc_fight_id"]
+    )]
+    right_complement = espn_ufc_df.loc[~espn_ufc_df["ufc_fight_id"].isin(
+        inner_join_df["ufc_fight_id"]
+    )]
+    joined_df = pd.concat([inner_join_df, left_complement, right_complement])
+    joined_df = joined_df.drop_duplicates(
         subset=["espn_fight_id", "ufc_fight_id", "bfo_fight_id"]
-    )
+    )"""
     print("shape of joined_df: ", joined_df.shape)
     # TODO check the value counts. Other than null IDs, each ID should only appear once. 
     # 
@@ -574,10 +624,10 @@ def join_bfo_espn_ufc(bfo_df, espn_df, ufc_df):
     print("shape of espn_df: ", espn_df.shape)
     print("shape of ufc_df: ", ufc_df.shape)
     base_db_interface.write_replace(
-        "joined_bfo_espn_ufc",
+        "clean_bfo_espn_ufc_data",
         joined_df,
     )
-
+    return joined_df
 
 
     # print("joining bfo and ufc data")

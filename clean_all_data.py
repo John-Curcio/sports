@@ -19,7 +19,7 @@ def clean_all():
     ufc_dc = UfcDataCleaner()
     ufc_dc.parse_all()
     base_db_interface.write_replace(
-        table_name="ufc_stats_df", 
+        table_name="clean_ufc_data", 
         df=ufc_dc.ufc_df
     )
 
@@ -27,17 +27,22 @@ def clean_all():
     espn_dc = EspnDataCleaner()
     espn_dc.parse_all()
     base_db_interface.write_replace(
-        table_name="espn_data",
+        table_name="clean_espn_data",
         df=espn_dc.espn_df
     )
 
     # print("--- clean bestfightodds data ---")
-    # bfo_fighter_odds_df = base_db_interface.read("bfo_fighter_odds")
-    # bfo_df = clean_fighter_bfo(bfo_fighter_odds_df)
-    # base_db_interface.write_replace(
-    #     table_name="bfo_open_odds",
-    #     df=bfo_df
-    # )
+    bfo_fighter_odds_df = base_db_interface.read("bfo_fighter_odds")
+    bfo_df = clean_fighter_bfo(bfo_fighter_odds_df)
+    base_db_interface.write_replace(
+        table_name="clean_bfo_data",
+        df=bfo_df
+    )
+    print("--- join bfo, espn, and ufc cleaned datasets ---")
+    bfo_df = base_db_interface.read("clean_bfo_data")
+    espn_df = base_db_interface.read("clean_espn_data")
+    ufc_df = base_db_interface.read("clean_ufc_data")
+    join_datasets.join_bfo_espn_ufc(bfo_df, espn_df, ufc_df)
 
     # print("--- extract some simple features ---")
     # df = pd.read_csv("data/full_bfo_ufc_espn_data.csv")

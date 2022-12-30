@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from db import base_db_interface
+from wrangle.join_datasets import get_fight_id
 """
 bfo_fighter_odds       espn_stats             ufc_round_totals
 bfo_fighter_urls       ufc_events             ufc_strikes
@@ -22,7 +23,12 @@ class EspnDataCleaner(object):
 
         # leave fighterID as number/firstname-lastname
         match_df["OpponentID"] = match_df["OpponentID"].str.split("_/id/").str[1]
+        match_df["FighterID"] = match_df["FighterID"].str.split("/").str[0]
+        match_df["OpponentID"] = match_df["OpponentID"].str.split("/").str[0]
+
         stats_df["OpponentID"] = stats_df["OpponentID"].str.split("_/id/").str[1]
+        stats_df["FighterID"] = stats_df["FighterID"].str.split("/").str[0]
+        stats_df["OpponentID"] = stats_df["OpponentID"].str.split("/").str[0]
         
         self.match_df = match_df 
         self.stats_df = stats_df 
@@ -33,13 +39,6 @@ class EspnDataCleaner(object):
         self.clean_match_df = None 
 
         self.espn_df = None
-
-    @staticmethod
-    def assign_fight_id(df):
-        max_id = np.maximum(df["FighterID"], df["OpponentID"])
-        min_id = np.minimum(df["FighterID"], df["OpponentID"])
-        fight_id = df["Date"].astype(str) + "_" + max_id + "_" + min_id
-        return df.assign(fight_id = fight_id)
 
     def _parse_bios(self):
         bio_df0 = self.bio_df.copy()
@@ -76,14 +75,22 @@ class EspnDataCleaner(object):
         return self.clean_bio_df
 
     def _parse_matches(self):
-        match_df = self.assign_fight_id(self.match_df)
+        match_df = self.match_df.assign(fight_id = get_fight_id(
+            fighter_id=self.match_df["FighterID"],
+            opponent_id=self.match_df["OpponentID"],
+            date=self.match_df["Date"]
+        ))
         self.clean_match_df = match_df.groupby("fight_id").first()\
             .reset_index()\
             .rename(columns={"Res.":"FighterResult"})
         return self.clean_match_df
 
     def _parse_stats(self):
-        stats_df = self.assign_fight_id(self.stats_df)
+        stats_df = self.stats_df.assign(fight_id = get_fight_id(
+            fighter_id=self.stats_df["FighterID"],
+            opponent_id=self.stats_df["OpponentID"],
+            date=self.stats_df["Date"]
+        ))
         ### format values
         unclean_cols = [
             'SDBL/A', 'SDHL/A', 'SDLL/A', 'TSL-TSA', '%BODY', 
@@ -114,6 +121,11 @@ class EspnDataCleaner(object):
         stats_clean_df["p_stats_zero"] = (stats_clean_df[stat_cols].fillna(0) == 0).mean(1)
         stats_clean_df["all_stats_null"] |= (stats_clean_df["p_stats_zero"] == 1)
 
+        # ESPN has a LOT of fights where no stats were collected. Either they leave it 
+        # blank or impute it as 0. We want to drop these fights because they are not 
+        # only useless, but misleading - they make it look like the fighter did nothing!
+        # so we drop fights where all stats are null or where all stats are 0.
+        # and in the case of duplicate fights, we keep the one with the most stats.
         self.clean_stats_df = stats_clean_df.query("~all_stats_null")\
             .sort_values("p_stats_zero")\
             .groupby(["fight_id", "FighterID", "OpponentID"])\

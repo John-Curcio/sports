@@ -33,12 +33,17 @@ def clean_event_bfo(event_df):
         "FighterName_fighter": "FighterName",
         "FighterName_opponent": "OpponentName",
     })
-    close_df["FighterID"] = "/fighters/" + close_df["FighterID"]
-    close_df["OpponentID"] = "/fighters/" + close_df["OpponentID"]
+    close_df["FighterID"] = close_df["FighterID"]
+    close_df["OpponentID"] = close_df["OpponentID"]
     close_df["EventHref"] = "/events/" + close_df["EventHref"]
     return close_df
 
 def clean_fighter_bfo(bfo_df):
+    """
+    Get opening and closing money line information from data scraped from 
+    the fighter pages on bestfightodds.com. Example page for Islam Makhachev:
+    https://www.bestfightodds.com/fighters/Islam-Makhachev-5541
+    """
     bfo_df["Date"] = pd.to_datetime(bfo_df["Date"])
     bfo_df["FighterName"] = bfo_df["FighterName"].str.lower().str.strip()
     bfo_df["OpponentName"] = bfo_df["OpponentName"].str.lower().str.strip()
@@ -49,7 +54,8 @@ def clean_fighter_bfo(bfo_df):
         "Date", "FighterID", "OpponentID", "FighterOpen", "OpponentOpen",
         "FighterName", "OpponentName",
     ])
-
+    bfo_df["FighterID"] = bfo_df["FighterID"].str.split("/fighters/").str[1]
+    bfo_df["OpponentID"] = bfo_df["OpponentID"].str.split("/fighters/").str[1]
     # to get the closing money line, get the "most favorable" odds for each fighter, 
     # then get implied prob most favorable is odds with biggest payout, ie gives 
     # the fighter the lowest prob
