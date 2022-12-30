@@ -182,7 +182,7 @@ class UfcDataCleaner(object):
         """
         Parse ufc_events, ufc_strikes, ufc_totals, ufc_fight_description,
         and merge them into a single dataframe, ufc_df. 
-        ufc_df should have one row per fight, and columns for all the information
+        ufc_df should have two rows per fight, and columns for all the information
         about the fight.
         """
         self._parse_events()
@@ -208,7 +208,7 @@ class UfcDataCleaner(object):
             }),
             on=["OpponentID", "FightID"],
             how="left",
-            suffixes=("_fighter", "_opponent")
+            suffixes=("", "_opp")
         )
         # add strikes for fighter and opponent
         temp_ufc_df = temp_ufc_df.merge(
@@ -221,7 +221,7 @@ class UfcDataCleaner(object):
             }),
             on=["OpponentID", "FightID"],
             how="left",
-            suffixes=("_fighter", "_opponent")
+            suffixes=("", "_opp")
         )
         self.ufc_df = temp_ufc_df
         return self.ufc_df
