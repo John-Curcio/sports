@@ -39,6 +39,11 @@ MANUAL_ESPN_DROP_FIGHTS = pd.DataFrame([
 ], columns=["Date", "FighterID", "OpponentID"])
 MANUAL_ESPN_DROP_FIGHTS["Date"] = pd.to_datetime(MANUAL_ESPN_DROP_FIGHTS["Date"])
 
+MANUAL_UFC_DROP_FIGHTS = [ 
+    # kazushi sakuraba fought marcus silveira twice on dec 21, 1997
+    # here, I drop the first fight, which was overturned to a no contest
+    "http://ufcstats.com/fight-details/2750ac5854e8b28b",
+]
 
 MANUAL_ESPN_OVERWRITE_MAP = {
     # These espn IDs correspond to the same guy - they have to be merged
@@ -80,6 +85,15 @@ MANUAL_BFO_OVERWRITE_MAP = {
     'Khalil-Rountree-Jr-11552': 'Khalil-Rountree-4935',
     'Khalil-Rountree-Jr-13118': 'Khalil-Rountree-4935',
     'Sumudaerji-Sumudaerji-8746': 'Su-Mudaerji-9345',
+
+    "Cheyanne-Buys-10252": "Cheyanne-Vlismas-8146",
+
+    "Joanne-Calderwood-3554": "Joanne-Wood-12845",
+
+    "Nuerdanbieke-Shayilan-12818": "Shayilan-Nuerdanbieke-11334",
+    "Michael-Malott-13500": "Mike-Malott-13089",
+    "Aori-Qileng-13588": "Qileng-Aori-10837",
+    "Brogan-Walker-Sanchez-8337": "Brogan-Walker-7832",
 }
 
 MANUAL_UFC_ESPN_MAP = {
@@ -193,6 +207,34 @@ MANUAL_BFO_UFC_MAP = {
     "Gerald-Meerschaert-3628": "6ac9bc2953c47345",
     "Abusupiyan-Magomedov-8265": "36b8f265bcd1b7a4",
     "Dustin-Stoltzfus-10214": "71505842fb6455c3",
+    # mallory martin was supposed to fight either montserrat ruiz,
+    # cheyanne buys, or cheyanne vlismas on Dec 4, 2021. She ended up
+    # fighting cheyanne vlismas (same person as cheyanne buys)
+    # montserrat ruiz/conejo 
+    "Montserrat-Ruiz-8705": "1235b31de15d0c6e",
+    "Cheyanne-Vlismas-8146": "4959f10a62f3fec3",
+
+    # joanne wood 
+    "Joanne-Wood-12845": "12f91bfa8f1f723b",
+
+    # ryan barberena was supposed to fight matt brown on Dec 4, 2021
+    # but barberena ended up fighting darian weeks
+    "Bryan-Barberena-4982": "a331233f597090a5",
+    "Matt-Brown-6270": "31123249b0bbf52e",
+    "Darian-Weeks-10594": "326a001926ffb7ec",
+    # josiane nunes was was supposed to fight jennifer gonzalez on feb 26, 2022
+    # but nunes ended up fighting ramona pascual
+    "Josiane-Nunes-11029": "68d35296f566792b",
+    "Ramona-Pascual-13314": "3eb4dc9a7d4ac906",
+    # francisco figueiredo was supposed to fight daniel lacerda on apr 30, 2022
+    # but figueiredo ended up fighting daniel da silva
+    "Francisco-Figueiredo-12945": "cdadae5363b66eef",
+    "Daniel-da-Silva-13133": "31bb0772f21cabd8",
+    # orion cosce was supposed to fight mike mathetha on jul 20, 2022
+    # but ended up fighting blood diamond
+    "Orion-Cosce-10253": "2c010b26a3306969",
+    "Blood-Diamond-13276": "9edf2c9082cc2cd8",
+    
 }
 
 MANUAL_BFO_ESPN_MAP = {
@@ -223,42 +265,3 @@ MANUAL_BFO_ESPN_MAP = {
     # valentina shevchenko
     "Valentina-Shevchenko-5475": "2554705",
 }
-
-# MANUAL_ESPN_BFO_MAP = {
-#     # 3041602/brianna-fortino
-#     '3041602': '/fighters/Brianna-Fortino-13884',
-#     # /3153355/uyran-carlos
-#     '3153355': '/fighters/Uyran-Carlos-11754',
-#     # 3146349/carlos-leal
-#     '3146349': '/fighters/Carlos-Leal-Miranda-7744',
-#     # 3153355/uyran-carlos
-#     '3153355': '/fighters/Uyran-Carlos-11754',
-#     # 4916590/diego-dias
-#     '4916590': '/fighters/Diego-Dias-11750',
-#     # 2431314/jacare-souza
-#     '2431314': '/fighters/Ronaldo-Souza-725',
-#     # 2555633/jj-ambrose
-# #     '2555633': '/fighters/J-J-Ambrose-459',
-#     # /2558487/tony-johnson-jr
-#     '2558487': '/fighters/Tony-Johnson-918',
-#     # 2504175/zachary-micklewright
-#     '2504175': '/fighters/Zach-Micklewright-1651',
-#     # rodrigo de lima
-#     '3110330': '/fighters/Rodrigo-Goiana-de-Lima-4992',
-#     # /4030644/marcelo-rojo
-#     '4030644': '/fighters/Marcelo-Rojo-7706',
-#     # 3083639/mike-erosa
-#     '3083639': '/fighters/Mikey-Erosa-7707',
-# #     '4335927/levy-saul-marroquin-salazar'
-#     '4335927': '/fighters/Levy-Saul-Marroquin-7713',
-#     '4063869': '/fighters/John-Castaneda-7396',
-    
-#     '4423264': 'fighters/Tofiq-Musaev-9177',
-#     '4306125': '/fighters/Gabe-Green-10506',
-#     '4914568': '/fighters/Pete-Rodrigue-13104',
-#     '3091146': '/fighters/Toninho-Gavinho-11224',
-#     '3074493': '/fighters/Alexandra-Albu-7261',
-#     '2509773': '/fighters/Shintaro-Ishiwatari-7509',
-#     '2500906': '/fighters/Bozigit-Ataev-9050',
-#     '4405109': '/fighters/Su-Mudaerji-9345',
-# }

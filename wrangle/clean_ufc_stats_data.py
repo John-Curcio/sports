@@ -192,13 +192,13 @@ class UfcDataCleaner(object):
 
         doubled_events_df = self._get_doubled_event_df()
         # merge events with descriptions
-        temp_ufc_df = doubled_events_df.merge(
+        ufc_df = doubled_events_df.merge(
             self.clean_desc_df,
             on=["FightID"],
             how="left",
         )
         # add totals for fighter and opponent
-        temp_ufc_df = temp_ufc_df.merge(
+        ufc_df = ufc_df.merge(
             self.clean_totals_df,
             on=["FighterID", "FightID"],
             how="left",
@@ -211,7 +211,7 @@ class UfcDataCleaner(object):
             suffixes=("", "_opp")
         )
         # add strikes for fighter and opponent
-        temp_ufc_df = temp_ufc_df.merge(
+        ufc_df = ufc_df.merge(
             self.clean_strikes_df,
             on=["FighterID", "FightID"],
             how="left",
@@ -223,7 +223,8 @@ class UfcDataCleaner(object):
             how="left",
             suffixes=("", "_opp")
         )
-        self.ufc_df = temp_ufc_df
+        ufc_df["Date"] = pd.to_datetime(ufc_df["Date"])
+        self.ufc_df = ufc_df
         return self.ufc_df
 
 
