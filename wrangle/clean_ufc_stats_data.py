@@ -29,6 +29,9 @@ class UfcDataCleaner(object):
             "Sub. att": "SM",
             "Rev.": "RV",
         })
+        totals_clean_df["SM"] = totals_clean_df["SM"].astype(int)
+        totals_clean_df["RV"] = totals_clean_df["RV"].astype(int)
+
         totals_clean_df["FighterID"] = self.get_clean_fighter_id(totals_clean_df["FighterID"])
         totals_clean_df["SSL"] = np.nan
         # inds = totals_clean_df["Sig. str."].str.contains("of")
