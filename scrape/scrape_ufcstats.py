@@ -450,16 +450,13 @@ class UpcomingUfcScraper(BasePageScraper):
         return None
 
 def main():
-    TEST_HISTORICAL = True 
+    TEST_HISTORICAL = False 
     TEST_UPCOMING = True
     if TEST_HISTORICAL:
         url_scraper = UfcUrlScraper()
         url_scraper.get_all_event_and_fight_urls()
-        # for now let's forget about events. They don't add much, 
-        # and I've got a weird bug where fighter urls are missing
         full_scraper = FullUfcScraper(
             fighter_urls=url_scraper.fighter_urls,
-            # event_urls=[], 
             event_urls=url_scraper.event_urls,
             fight_urls=url_scraper.fight_urls,
         ) 

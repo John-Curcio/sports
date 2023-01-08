@@ -44,7 +44,6 @@ def clean_all():
     join_datasets.join_bfo_espn_ufc(bfo_df, espn_df, ufc_df)
     join_datasets.final_clean_step()
     print("--- extract some simple features ---")
-    # df = pd.read_csv("data/full_bfo_ufc_espn_data.csv")
     df = base_db_interface.read("clean_bfo_espn_ufc_data")
     df["Date"] = pd.to_datetime(df["Date"])
 
@@ -54,7 +53,6 @@ def clean_all():
         table_name="bfo_espn_ufc_features",
         df=pp.pp_df
     )
-    # pp.pp_df.to_csv("data/full_bfo_ufc_espn_data_clean.csv", index=False)
 
     print("--- done! ---")
 
