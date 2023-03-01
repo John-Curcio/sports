@@ -18,6 +18,7 @@ class UfcEventScraper(BasePageScraper):
     http://ufcstats.com/event-details/253d3f9e97ca149a
     """
     def get_fights(self):
+        # Get urls for completed fights (not upcoming fights)
         soup = self.get_soup()
         class_str = "b-fight-details__table-row b-fight-details__table-row__hover js-fight-details-click"
         tags = soup.find_all("tr", {"class": class_str})
@@ -77,6 +78,7 @@ class UfcEventScraper(BasePageScraper):
         self.data["is_title_fight"] = self.data["img_png_url"].str.endswith("belt.png")
         
         self.data["FightID"] = self.get_fights()
+        self.data["fight_rank_on_card"] = self.data.index # order of fights on the card
         return self.data
 
 
@@ -384,7 +386,7 @@ class FullUfcScraper(object):
         ]:
             if df is not None:
                 print(f"writing {len(df)} rows to {table_name}")
-                base_db_interface.write_update(
+                base_db_interface.write_replace(
                     table_name=table_name, 
                     df=df
                 )
@@ -392,14 +394,21 @@ class FullUfcScraper(object):
 
 
 class UpcomingUfcEventScraper(UfcEventScraper):
-    pass
+    
+    def get_page_data(self) -> pd.DataFrame:
+        # check that the result has any fights. If not, just return something empty
+        soup = self.get_soup()
+        self.data = pd.read_html(str(soup))[0]
+        if len(self.data) == 0:
+            return pd.DataFrame()
+        return super().get_page_data()
 
 class UpcomingUfcScraper(BasePageScraper):
 
     def __init__(self):
         super().__init__(url="http://ufcstats.com/statistics/events/upcoming")
         self.upcoming_event_urls = None
-        self.upcoming_events_df = None
+        # self.upcoming_events_df = None
         self.upcoming_fights_df = None 
 
     def get_page_urls(self):
@@ -438,7 +447,7 @@ class UpcomingUfcScraper(BasePageScraper):
 
     def write_all_to_tables(self):
         for table_name, df in [
-            ("ufc_upcoming_events", self.upcoming_events_df),
+            # ("ufc_upcoming_events", self.upcoming_events_df),
             ("ufc_upcoming_fights", self.upcoming_fights_df),
         ]:
             if df is not None:
@@ -450,7 +459,7 @@ class UpcomingUfcScraper(BasePageScraper):
         return None
 
 def main():
-    TEST_HISTORICAL = False 
+    TEST_HISTORICAL = True 
     TEST_UPCOMING = True
     if TEST_HISTORICAL:
         url_scraper = UfcUrlScraper()

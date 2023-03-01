@@ -14,7 +14,7 @@ class RealEloWrapper(object):
         
     def fit_transform_all(self, df):
         elo_feature_list = []
-        elo_feat_df = df[["espn_fight_id"]].copy()
+        elo_feat_df = df[["fight_id"]].copy()
         for target_col, alpha in self.elo_alphas.items():
             print(f"getting elo features for {target_col}")
             elo_estimator = RealEloEstimator(target_col, alpha=alpha)
@@ -24,8 +24,8 @@ class RealEloWrapper(object):
         return elo_feat_df
     
     def fit_predict(self, train_df, test_df):
-        train_feat_df = train_df[["espn_fight_id"]].copy()
-        test_feat_df = test_df[["espn_fight_id"]].copy()
+        train_feat_df = train_df[["fight_id"]].copy()
+        test_feat_df = test_df[["fight_id"]].copy()
         for target_col, alpha in self.elo_alphas.items():
             print(f"getting elo features for {target_col}")
             elo_estimator = RealEloEstimator(target_col, alpha=alpha)
@@ -46,7 +46,7 @@ class BinaryEloWrapper(object):
         
     def fit_transform_all(self, df):
         elo_feature_list = []
-        elo_feat_df = df[["espn_fight_id"]].copy()
+        elo_feat_df = df[["fight_id"]].copy()
         for target_col, alpha in self.elo_alphas.items():
             print(f"getting elo features for {target_col}")
             elo_estimator = BinaryEloEstimator(target_col, alpha=alpha)
@@ -57,8 +57,8 @@ class BinaryEloWrapper(object):
         return elo_feat_df
     
     def fit_predict(self, train_df, test_df):
-        train_feat_df = train_df[["espn_fight_id"]].copy()
-        test_feat_df = test_df[["espn_fight_id"]].copy()
+        train_feat_df = train_df[["fight_id"]].copy()
+        test_feat_df = test_df[["fight_id"]].copy()
         for target_col, alpha in self.elo_alphas.items():
             print(f"getting elo features for {target_col}")
             elo_estimator = BinaryEloEstimator(target_col, alpha=alpha)
@@ -107,23 +107,23 @@ class PcaEloWrapper(object):
             pca_train_data = self.pca.transform(df_sub[self.target_cols] / conditional_scale)
         pca_cols = ["PC_{}".format(i) for i in range(pca_train_data.shape[1])]
         pca_df = pd.DataFrame(pca_train_data, columns=pca_cols)
-        pca_df["espn_fight_id"] = df_sub["espn_fight_id"].values
-        pca_df["espn_fighter_id"] = df_sub["espn_fighter_id"].values
-        pca_df["espn_opponent_id"] = df_sub["espn_opponent_id"].values
+        pca_df["fight_id"] = df_sub["fight_id"].values
+        pca_df["FighterID_espn"] = df_sub["FighterID_espn"].values
+        pca_df["OpponentID_espn"] = df_sub["OpponentID_espn"].values
         pca_df["Date"] = df_sub["Date"].values
         return pca_df
         
     def fit_transform_all(self, df):
         pca_df = self._fit_transform_pca(df)
-        pca_df = df[["espn_fight_id", "espn_fighter_id", "espn_opponent_id"]].merge(
-            pca_df, how="left", on=["espn_fight_id", "espn_fighter_id", "espn_opponent_id"],
+        pca_df = df[["fight_id", "FighterID_espn", "OpponentID_espn"]].merge(
+            pca_df, how="left", on=["fight_id", "FighterID_espn", "OpponentID_espn"],
         )
         return self.elo_wrapper.fit_transform_all(pca_df)
 
     def fit_predict(self, train_df, test_df):
         train_pca_df = self._fit_transform_pca(train_df)
-        train_pca_df = train_df[["espn_fight_id", "espn_fighter_id", "espn_opponent_id"]].merge(
-            train_pca_df, how="left", on=["espn_fight_id", "espn_fighter_id", "espn_opponent_id"],
+        train_pca_df = train_df[["fight_id", "FighterID_espn", "OpponentID_espn"]].merge(
+            train_pca_df, how="left", on=["fight_id", "FighterID_espn", "OpponentID_espn"],
         )
         return self.elo_wrapper.fit_predict(train_pca_df, test_df)
     
@@ -140,7 +140,7 @@ class AccEloWrapper(object):
         
     def fit_transform_all(self, df):
         elo_feature_list = []
-        elo_feat_df = df[["espn_fight_id"]].copy()
+        elo_feat_df = df[["fight_id"]].copy()
         for (landed_col, attempt_col), alpha in self.elo_alphas.items():
             target_col = f"{landed_col}_{attempt_col}"
             print(f"getting elo features for {landed_col}/{attempt_col}")
@@ -159,8 +159,8 @@ class AccEloWrapper(object):
         return elo_feat_df
     
     def fit_predict(self, train_df, test_df):
-        train_feat_df = train_df[["espn_fight_id"]].copy()
-        test_feat_df = test_df[["espn_fight_id"]].copy()
+        train_feat_df = train_df[["fight_id"]].copy()
+        test_feat_df = test_df[["fight_id"]].copy()
         for (landed_col, attempt_col), alpha in self.elo_alphas.items():
             target_col = f"{landed_col}_{attempt_col}"
             print(f"getting elo features for {landed_col}/{attempt_col}")

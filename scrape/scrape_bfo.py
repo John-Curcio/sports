@@ -234,6 +234,7 @@ class FighterBFS(object):
             self.fighter_urls_seen.add(url)
             print("iter={}, |frontier|={}, crawling page {}".format(curr_iter, len(frontier), url))
             try:
+                # TODO I should probably have some kind of timeout/hang handler
                 curr_scraper = FighterScraper(url)
                 fighter_urls = curr_scraper.get_fighter_urls()
                 frontier |= (fighter_urls - self.fighter_urls_seen)
@@ -244,7 +245,7 @@ class FighterBFS(object):
                 self.failed_fighter_urls.add(url)
             except ValueError:
                 print("oy, valueerror from {}".format(url))
-                self.failed_fighter_urls.add(url)    
+                self.failed_fighter_urls.add(url)
             curr_iter += 1
         return self.fighter_urls_seen
 
@@ -286,7 +287,7 @@ class BfoOddsScraper(object):
             self.failed_fighter_urls |= bfs.failed_fighter_urls
         url_df = pd.DataFrame(self.fighter_urls_seen, columns=["url"])
 
-        base_db_interface.write_update(
+        base_db_interface.write_replace(
             table_name="bfo_fighter_urls",
             df=url_df,
         )
@@ -345,15 +346,18 @@ class BfoOddsScraper(object):
         start_letter_ind = len("https://www.bestfightodds.com/fighters/")
         url_df["start_letter"] = url_df["url"].str[start_letter_ind]
         url_df = url_df.sort_values("url")
+        match_df_list = []
         for start_letter, grp in url_df.groupby("start_letter"):
             print("{} fighters with name beginning with {}".format(len(grp), start_letter))
             match_df = self.get_fighter_odds(grp["url"])
-            print("writing {} rows to db".format(len(match_df)))
-            base_db_interface.write_update(
-                table_name="bfo_fighter_odds",
-                df=match_df,
-            )
-        return None
+            match_df_list.append(match_df)
+        match_df = pd.concat(match_df_list).reset_index(drop=True)
+        print("writing {} rows to db".format(len(match_df)))
+        base_db_interface.write_replace(
+            table_name="bfo_fighter_odds",
+            df=match_df,
+        )
+        return match_df
 
 
 def main():

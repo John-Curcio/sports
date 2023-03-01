@@ -513,12 +513,25 @@ def join_bfo_espn_ufc(bfo_df, espn_df, ufc_df):
         on=["FighterID_ufc", "OpponentID_ufc", "Date"],
         how="inner",
     )
-    espn_ufc_df = espn_df.merge(
+    historical_espn_ufc_df = espn_df.merge(
         ufc_df,
         on=["FighterID_espn", "OpponentID_espn", "Date"],
         how="left",
         suffixes=("","_ufc")
     )
+    # don't forget about upcoming fights!
+    upcoming_espn_ufc_df = espn_df.merge(
+        ufc_df.query("is_upcoming == 1"),
+        on=["FighterID_espn", "OpponentID_espn", "Date"],
+        how="right",
+        suffixes=("","_ufc")
+    )
+    espn_ufc_df = pd.concat([
+        historical_espn_ufc_df,
+        upcoming_espn_ufc_df,
+    ]).sort_values("Date").reset_index(drop=True)
+    espn_ufc_df["is_upcoming"] = espn_ufc_df["is_upcoming"].fillna(0).astype(int)
+
     # join bfo data
     bfo_ufc_df = bfo_df.rename(columns={
         "FighterID": "FighterID_bfo",
@@ -534,6 +547,15 @@ def join_bfo_espn_ufc(bfo_df, espn_df, ufc_df):
         how="left",
         suffixes=("","_bfo")
     )
+    # Make sure fight_id isn't missing. If not missing, this will 
+    # be a no-op. If missing, we'll fill it in. fight_id may be
+    # missing for upcoming fights.
+    bfo_espn_ufc_df["fight_id"] = get_fight_id(
+        bfo_espn_ufc_df["FighterID_espn"],
+        bfo_espn_ufc_df["OpponentID_espn"],
+        bfo_espn_ufc_df["Date"],
+    )
+
     print("checking for duplicate fights")
     print(bfo_espn_ufc_df["fight_id"].value_counts()[0:10])
     print("bfo_espn_ufc.shape:", bfo_espn_ufc_df.shape)

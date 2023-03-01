@@ -19,3 +19,8 @@ work in progress for sure. including this README
 * Run `conda env create -f pystan2_env.yml`
 * Open `example run 6-25.ipynb` and try to run it
     * On your first run, the model may take a few minutes to compile. Afterwards, the compiled model gets saved to `sports/stan_builds` so this should only happen once. 
+
+# Making predictions
+
+* `python scrape_and_write_all.py`
+* `python clean_all_data.py`
