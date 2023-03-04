@@ -63,7 +63,7 @@ class BasePageScraper(ABC):
             raw_html = self.get_html()
         return BeautifulSoup(raw_html, features="lxml")
     
-    @abstractmethod
+    # @abstractmethod
     def get_page_urls(self):
         # get set of urls mapping to other pages to scrape
         raise NotImplemented

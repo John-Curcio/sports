@@ -14,6 +14,7 @@ class DbInterface(object):
     def connect(self):
         # connects to the database and creates it if it doesn't exist
         self._con = sqlite3.connect(self.db_name)
+        self._cursor = self._con.cursor()
 
     def close(self):
         self._con.close()
