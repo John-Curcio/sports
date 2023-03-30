@@ -28,8 +28,8 @@ class MultiKellyPM(object):
         fighter_ml_col="FighterOpen", opponent_ml_col="OpponentOpen", parse_ml=True):
         """
         pred_df: pd.DataFrame with columns y_pred, Date, win_target, 
-            `fighter_ml_col`, `opponent_ml_col`, espn_fight_id, espn_fighter_id, 
-            espn_opponent_id
+            `fighter_ml_col`, `opponent_ml_col`, fight_id, FighterID_espn, 
+            OpponentID_espn
         max_bankroll_fraction: maximum % of bankroll to risk on any one fight
         fighter_ml_col: column of pred_df containing money line for fighter
         opponent_ml_col: column of pred_df containing money line for opponent
@@ -88,7 +88,9 @@ class MultiKellyPM(object):
         self.event_return_df = fight_return_df.groupby(self.groupby_col)["return"].sum()
         return self.event_return_df.reset_index()
 
-    def get_portfolio_weights(self, df):
+    def get_portfolio_weights(self, df=None):
+        if df is None:
+            df = self.pred_df
         b_fighter = df["fighter_payout"].fillna(0)
         b_opponent = df["opponent_payout"].fillna(0)
         p_fighter = df["y_pred"]
@@ -108,8 +110,8 @@ class MultiKellyPM(object):
                                   kelly_bet_opponent / n_bets).fillna(0)
         # again, check that i'm never betting on both guys
         assert fighter_bet.sum() + opponent_bet.sum() < 1
-        return df[["espn_fight_id", self.groupby_col, "y_pred",
-                   "espn_fighter_id", "espn_opponent_id", 
+        return df[["fight_id", self.groupby_col, "y_pred",
+                   "FighterID_espn", "OpponentID_espn", 
                    "fighter_payout", "opponent_payout"]].assign(
             fighter_bet = fighter_bet,
             opponent_bet = opponent_bet,

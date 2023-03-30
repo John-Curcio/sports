@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 
 def parse_american_odds(x:pd.Series):
+    x = x.astype(float)
     fav_inds = x <= 0
     dog_inds = x > 0
     y = pd.Series(0, index=x.index)
@@ -32,12 +33,17 @@ def clean_event_bfo(event_df):
         "FighterName_fighter": "FighterName",
         "FighterName_opponent": "OpponentName",
     })
-    close_df["FighterID"] = "/fighters/" + close_df["FighterID"]
-    close_df["OpponentID"] = "/fighters/" + close_df["OpponentID"]
+    close_df["FighterID"] = close_df["FighterID"]
+    close_df["OpponentID"] = close_df["OpponentID"]
     close_df["EventHref"] = "/events/" + close_df["EventHref"]
     return close_df
 
 def clean_fighter_bfo(bfo_df):
+    """
+    Get opening and closing money line information from data scraped from 
+    the fighter pages on bestfightodds.com. Example page for Islam Makhachev:
+    https://www.bestfightodds.com/fighters/Islam-Makhachev-5541
+    """
     bfo_df["Date"] = pd.to_datetime(bfo_df["Date"])
     bfo_df["FighterName"] = bfo_df["FighterName"].str.lower().str.strip()
     bfo_df["OpponentName"] = bfo_df["OpponentName"].str.lower().str.strip()
@@ -48,7 +54,8 @@ def clean_fighter_bfo(bfo_df):
         "Date", "FighterID", "OpponentID", "FighterOpen", "OpponentOpen",
         "FighterName", "OpponentName",
     ])
-
+    bfo_df["FighterID"] = bfo_df["FighterID"].str.split("/fighters/").str[1]
+    bfo_df["OpponentID"] = bfo_df["OpponentID"].str.split("/fighters/").str[1]
     # to get the closing money line, get the "most favorable" odds for each fighter, 
     # then get implied prob most favorable is odds with biggest payout, ie gives 
     # the fighter the lowest prob
@@ -70,6 +77,11 @@ def clean_fighter_bfo(bfo_df):
     return bfo_df
 
 def clean_all_bfo(fighter_df, event_df):
+    """
+    This function joins fighter_df and event_df. fighter_df contains the opening
+    odds for each fight, scraped from the fighters' pages. event_df contains the
+    closing odds for each fight, scraped from the event pages.
+    """
     open_df = clean_fighter_bfo(fighter_df)
     close_df = clean_event_bfo(event_df)
     close_df = close_df.drop(columns=["FighterName", "OpponentName"])
@@ -123,8 +135,8 @@ def clean_all_bfo(fighter_df, event_df):
     )
     return full_df_clean
 
-if __name__ == "__main__": 
-    fighter_df = pd.read_csv("data/all_fighter_odds_2022-07-16.csv")
-    event_df = pd.read_csv("data/bfo_event_odds_2022-07-16.csv")
-    bfo_df = clean_all_bfo(fighter_df, event_df)
-    bfo_df.to_csv("data/bfo_open_and_close_odds.csv", index=False)
+# if __name__ == "__main__": 
+#     fighter_df = pd.read_csv("data/all_fighter_odds_2022-07-16.csv")
+#     event_df = pd.read_csv("data/bfo_event_odds_2022-07-16.csv")
+#     bfo_df = clean_all_bfo(fighter_df, event_df)
+#     bfo_df.to_csv("data/bfo_open_and_close_odds.csv", index=False)

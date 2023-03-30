@@ -15,7 +15,9 @@ from lxml import html
 
 import boto3
 import time
-from base_scrape import BaseBfs, base_db_interface
+from scrape.base_scrape import BaseBfs
+from db import base_db_interface
+
 
 
 dt_now = str(pd.to_datetime('today').date())
@@ -31,7 +33,7 @@ class EmptyResponse(Exception):
 
 class BfoRequest(object):
     
-    def __init__(self, url, max_tries=10, sleep_time=5):
+    def __init__(self, url, max_tries=20, sleep_time=5):
         self.url = url
         self.max_tries = max_tries
         self.sleep_time = sleep_time
@@ -232,6 +234,7 @@ class FighterBFS(object):
             self.fighter_urls_seen.add(url)
             print("iter={}, |frontier|={}, crawling page {}".format(curr_iter, len(frontier), url))
             try:
+                # TODO I should probably have some kind of timeout/hang handler
                 curr_scraper = FighterScraper(url)
                 fighter_urls = curr_scraper.get_fighter_urls()
                 frontier |= (fighter_urls - self.fighter_urls_seen)
@@ -242,7 +245,7 @@ class FighterBFS(object):
                 self.failed_fighter_urls.add(url)
             except ValueError:
                 print("oy, valueerror from {}".format(url))
-                self.failed_fighter_urls.add(url)    
+                self.failed_fighter_urls.add(url)
             curr_iter += 1
         return self.fighter_urls_seen
 
@@ -274,7 +277,7 @@ class BfoOddsScraper(object):
             "https://www.bestfightodds.com/fighters/Julianna-Pena-1816",
         ]
 
-    def scrape_all_fighter_urls(self):
+    def scrape_and_write_all_fighter_urls(self):
         root_urls = self.get_root_urls()
         for root_url in root_urls:
             bfs = FighterBFS(root_url, max_iters=self.max_iters)
@@ -283,34 +286,32 @@ class BfoOddsScraper(object):
             self.event_urls_seen |= bfs.event_urls_seen
             self.failed_fighter_urls |= bfs.failed_fighter_urls
         url_df = pd.DataFrame(self.fighter_urls_seen, columns=["url"])
-        url_df.to_csv("scraped_data/mma/bfo/bfo_fighter_urls_{}.csv".format(dt_now), index=False)
 
-        event_url_df = pd.DataFrame(self.event_urls_seen, columns=["url"])
-        event_url_df.to_csv("scraped_data/mma/bfo/bfo_fighter_urls_{}.csv".format(dt_now), index=False)
-
-        fail_df = pd.DataFrame(self.failed_fighter_urls, columns=["url"])
-        fail_df.to_csv("scraped_data/mma/bfo/bfo_fighter_urls_{}.csv".format(dt_now), index=False)
-        return url_df
-
-    def scrape_all_opening_odds(self, url_df=None):
-        if url_df is None:
-            url_df = self.scrape_all_fighter_urls()
-        start_letter_ind = len("https://www.bestfightodds.com/fighters/")
-        url_df["start_letter"] = url_df["url"].str[start_letter_ind]
-        for start_letter, grp in url_df.groupby("start_letter"):
-            print("{} fighters with name beginning with {}".format(len(grp), start_letter))
-            match_df = self.get_fighter_odds(grp["url"])
-            path = "scraped_data/mma/bfo/{}_fighter_odds_{}.csv".format(start_letter, dt_now)
-            match_df.to_csv(path, index=False)
+        base_db_interface.write_replace(
+            table_name="bfo_fighter_urls",
+            df=url_df,
+        )
         return None
 
-    def scrape_all_closing_odds(self, url_df=None):
-        if url_df is None:
-            url_df = pd.DataFrame(self.event_urls_seen, columns=["url"])
-        odds_df = self.get_event_odds(url_df["url"])
-        path = "scraped_data/mma/bfo/bfo_event_odds_{}.csv".format(dt_now)
-        odds_df.to_csv(path, index=False)
-        return None
+    # def scrape_all_opening_odds(self, url_df=None):
+    #     if url_df is None:
+    #         url_df = self.scrape_all_fighter_urls()
+    #     start_letter_ind = len("https://www.bestfightodds.com/fighters/")
+    #     url_df["start_letter"] = url_df["url"].str[start_letter_ind]
+    #     for start_letter, grp in url_df.groupby("start_letter"):
+    #         print("{} fighters with name beginning with {}".format(len(grp), start_letter))
+    #         match_df = self.get_fighter_odds(grp["url"])
+    #         path = "scraped_data/mma/bfo/{}_fighter_odds_{}.csv".format(start_letter, dt_now)
+    #         match_df.to_csv(path, index=False)
+    #     return None
+
+    # def scrape_all_closing_odds(self, url_df=None):
+    #     if url_df is None:
+    #         url_df = pd.DataFrame(self.event_urls_seen, columns=["url"])
+    #     odds_df = self.get_event_odds(url_df["url"])
+    #     path = "scraped_data/mma/bfo/bfo_event_odds_{}.csv".format(dt_now)
+    #     odds_df.to_csv(path, index=False)
+    #     return None
 
     def get_event_odds(self, urls):
         odds_df_list = []
@@ -338,24 +339,32 @@ class BfoOddsScraper(object):
                 continue
         return pd.concat(odds_df_list)
 
-    def scrape_and_write_opening_odds(self):
-        url_df = self.scrape_all_fighter_urls()
+    def scrape_and_write_opening_odds(self, url_df=None):
+        if url_df is None:
+            url_df = base_db_interface.read("bfo_fighter_urls")
         # batching fighters by first letter of last name (as encoded in url)
         start_letter_ind = len("https://www.bestfightodds.com/fighters/")
         url_df["start_letter"] = url_df["url"].str[start_letter_ind]
+        url_df = url_df.sort_values("url")
+        match_df_list = []
         for start_letter, grp in url_df.groupby("start_letter"):
             print("{} fighters with name beginning with {}".format(len(grp), start_letter))
             match_df = self.get_fighter_odds(grp["url"])
-            base_db_interface.write_update(
-                table_name="bfo_fighter_odds",
-                df=match_df,
-            )
-        return None
+            match_df_list.append(match_df)
+        match_df = pd.concat(match_df_list).reset_index(drop=True)
+        print("writing {} rows to db".format(len(match_df)))
+        base_db_interface.write_replace(
+            table_name="bfo_fighter_odds",
+            df=match_df,
+        )
+        return match_df
 
-if __name__ == "__main__":
+
+def main():
     # max_iters = 2
     max_iters = np.inf
     bfo = BfoOddsScraper(max_iters=max_iters)
+    bfo.scrape_and_write_all_fighter_urls()
     bfo.scrape_and_write_opening_odds()
     print("done!")
     

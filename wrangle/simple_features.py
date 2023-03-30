@@ -2,6 +2,35 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import string
+import multiprocessing
+
+def _get_career_stats(fighter_group):
+    fighter_id, fighter_group = fighter_group
+    fighter_df = fighter_group.sort_values("Date")
+
+    first_fight = fighter_df["Date"].min()
+    n_career_fights = np.arange(0, len(fighter_df))
+    # if it's his first ufc fight, just give him n_ufc_fights=1. getting
+    # signed to the ufc at all has some value
+    n_ufc_fights = fighter_df["is_ufc"].cumsum()
+    t_since_first_fight = (fighter_df["Date"] - first_fight).dt.days
+    t_since_last_fight = fighter_df["Date"].diff().dt.days # .fillna(0)
+    total_time_in_cage = fighter_df["time_seconds"].cumsum().shift().fillna(0)
+    min_weight = fighter_df["fight_weight"].cummin()
+    max_weight = fighter_df["fight_weight"].cummax()
+    prev_weight = fighter_df["fight_weight"].shift() # .fillna(0)
+    return pd.DataFrame({
+        "fight_id": fighter_df["fight_id"],
+        "FighterID_espn": fighter_id,
+        "n_career_fights": n_career_fights,
+        "n_ufc_fights": n_ufc_fights,
+        "t_since_first_fight": t_since_first_fight,
+        "t_since_prev_fight": t_since_last_fight,
+        "total_ufc_cage_time": total_time_in_cage,
+        "min_weight": min_weight,
+        "max_weight": max_weight,
+        "prev_weight": prev_weight,
+    })
 
 class Preprocessor(object):
     # create features that are annoying or inconvenient to obtain
@@ -76,41 +105,38 @@ class Preprocessor(object):
         
     def assign_career_stats(self, df):
         df = df.sort_values("Date")
-        fighter_ids = sorted(set(df["espn_fighter_id"]) | set(df["espn_opponent_id"]))
         career_df = []
-        for fighter_id in tqdm(fighter_ids):
-            inds = (df[["espn_fighter_id", "espn_opponent_id"]] == fighter_id).any(1)
-            fight_ids = df.loc[inds, "espn_fight_id"]
-            first_fight = df.loc[inds, "Date"].min()
-            n_career_fights = np.arange(0, inds.sum())
-            # if it's his first ufc fight, just give him n_ufc_fights=1. getting
-            # signed to the ufc at all has some value
-            n_ufc_fights = df.loc[inds, "is_ufc"].cumsum() # .shift().fillna(0)
-            t_since_first_fight = (df.loc[inds, "Date"] - first_fight).dt.days
-            t_since_last_fight = df.loc[inds, "Date"].diff().dt.days
-            # total_time_in_cage = df.loc[inds, "time_seconds"].cumsum().shift().fillna(0)
-            min_weight = df.loc[inds, "fight_weight"].cummin()
-            max_weight = df.loc[inds, "fight_weight"].cummax()
-            prev_weight = df.loc[inds, "fight_weight"].shift()
-            career_df.append(pd.DataFrame({
-                "espn_fight_id": fight_ids,
-                "espn_fighter_id": fighter_id,
-                "n_career_fights": n_career_fights,
-                "n_ufc_fights": n_ufc_fights,
-                "t_since_first_fight": t_since_first_fight,
-                "t_since_prev_fight": t_since_last_fight,
-                # "total_time_in_cage": total_time_in_cage,
-                "min_weight": min_weight,
-                "max_weight": max_weight,
-                "prev_weight": prev_weight,
-            }))
+        with multiprocessing.Pool(2) as pool:
+            # wrapping this in a list is necessary because imap returns an iterator, 
+            # and we need the append method later.
+            # using tqdm to show a progress bar, keep my sanity - tqdm is just a wrapper,
+            # only returns another iterable
+            fighter_groupby = df.dropna(subset="FighterID_espn").groupby("FighterID_espn")
+            career_df = list(tqdm(pool.imap(_get_career_stats, fighter_groupby, chunksize=10)))
+        # impute career stats for null FighterID_espn
+        # if the fighter is unknown, it's probably because he's a new fighter
+        inds = df[["FighterID_espn", "OpponentID_espn"]].isnull().any(1)
+        fight_ids = df.loc[inds, "fight_id"]
+        career_df.append(pd.DataFrame({
+            "fight_id": fight_ids,
+            "FighterID_espn": np.nan,
+            "n_career_fights": 0,
+            "n_ufc_fights": 0,
+            "t_since_first_fight": 0,
+            "t_since_prev_fight": np.nan,
+            "total_ufc_cage_time": 0,
+            "min_weight": df.loc[inds, "fight_weight"],
+            "max_weight": df.loc[inds, "fight_weight"],
+            "prev_weight": np.nan,
+        }))
+        # merge career stats into main df
         career_df = pd.concat(career_df).reset_index(drop=True)
         df = df.merge(
-            career_df, how="left", on=["espn_fight_id", "espn_fighter_id"]
+            career_df, how="left", on=["fight_id", "FighterID_espn"]
         ).merge(
             career_df, how="left", 
-            left_on=["espn_fight_id", "espn_opponent_id"],
-            right_on=["espn_fight_id", "espn_fighter_id"],
+            left_on=["fight_id", "OpponentID_espn"],
+            right_on=["fight_id", "FighterID_espn"],
             suffixes=("", "_opp"),
         )
         return df
@@ -158,12 +184,12 @@ class Preprocessor(object):
     def assign_gender(df):
         is_fem_fighter = df["WT Class"].fillna("").str.startswith("Women")
         fem_fatales = (
-            set(df.loc[is_fem_fighter, "espn_fighter_id"]) |
-            set(df.loc[is_fem_fighter, "espn_opponent_id"]) 
+            set(df.loc[is_fem_fighter, "FighterID_espn"]) |
+            set(df.loc[is_fem_fighter, "OpponentID_espn"]) 
         )
         is_fem_fighter = (
-            df["espn_fighter_id"].isin(fem_fatales) |
-            df["espn_opponent_id"].isin(fem_fatales)
+            df["FighterID_espn"].isin(fem_fatales) |
+            df["OpponentID_espn"].isin(fem_fatales)
         )
         return df.assign(gender=is_fem_fighter.map({True:"W", False:"M"}))
     
@@ -188,8 +214,8 @@ class Preprocessor(object):
             "TSL", "TSA", "TDL", "TDA",
         ]
         for stat_name in shared_ufc_espn_stats:
-            stat_fighter = df[f"{stat_name}_espn"].fillna(df[f"{stat_name}_ufc"])
-            stat_opponent = df[f"{stat_name}_opp_espn"].fillna(df[f"{stat_name}_opp_ufc"])            
+            stat_fighter = df[f"{stat_name}"].fillna(df[f"{stat_name}_ufc"])
+            stat_opponent = df[f"{stat_name}_opp"].fillna(df[f"{stat_name}_opp_ufc"])            
             df[stat_name] = stat_fighter
             df[f"{stat_name}_opp"] = stat_opponent
         # SM_fails

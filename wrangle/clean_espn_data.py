@@ -1,23 +1,38 @@
 import pandas as pd
 import numpy as np
+from db import base_db_interface
+from wrangle.join_datasets import get_fight_id
+"""
+bfo_fighter_odds       espn_stats             ufc_round_totals
+bfo_fighter_urls       ufc_events             ufc_strikes
+espn_bio               ufc_fight_description  ufc_totals
+espn_matches           ufc_fighters           ufc_upcoming_fights
+espn_missed_fighters   ufc_round_strikes
+"""
 
 
 class EspnDataCleaner(object):
 
-    def __init__(self, stats_path, bio_path, match_path):
-        stats_df = pd.read_csv(stats_path)
-        self.bio_df = pd.read_csv(bio_path)
-        match_df = pd.read_csv(match_path)
+    def __init__(self):
+        stats_df = base_db_interface.read("espn_stats")
+        bio_df = base_db_interface.read("espn_bio")
+        match_df = base_db_interface.read("espn_matches")
 
         for df in [stats_df, match_df]:
             df["Date"] = pd.to_datetime(df["Date"])
 
         # leave fighterID as number/firstname-lastname
         match_df["OpponentID"] = match_df["OpponentID"].str.split("_/id/").str[1]
+        match_df["FighterID"] = match_df["FighterID"].str.split("/").str[0]
+        match_df["OpponentID"] = match_df["OpponentID"].str.split("/").str[0]
+
         stats_df["OpponentID"] = stats_df["OpponentID"].str.split("_/id/").str[1]
+        stats_df["FighterID"] = stats_df["FighterID"].str.split("/").str[0]
+        stats_df["OpponentID"] = stats_df["OpponentID"].str.split("/").str[0]
         
         self.match_df = match_df 
         self.stats_df = stats_df 
+        self.bio_df = bio_df
 
         self.clean_stats_df = None 
         self.clean_bio_df = None 
@@ -25,15 +40,9 @@ class EspnDataCleaner(object):
 
         self.espn_df = None
 
-    @staticmethod
-    def assign_fight_id(df):
-        max_id = np.maximum(df["FighterID"], df["OpponentID"])
-        min_id = np.minimum(df["FighterID"], df["OpponentID"])
-        fight_id = df["Date"].astype(str) + "_" + max_id + "_" + min_id
-        return df.assign(fight_id = fight_id)
-
     def _parse_bios(self):
         bio_df0 = self.bio_df.copy()
+        bio_df0["FighterID"] = bio_df0["FighterID"].str.split("/").str[0]
         bio_df0["Name"] = bio_df0["Name"].str.strip().str.lower()
 
         bio_df0["ReachInches"] = bio_df0["Reach"].fillna('"').str[:-1]
@@ -56,26 +65,33 @@ class EspnDataCleaner(object):
         bio_df0["HeightInches"] = bio_df0["HeightInches"].fillna(ht)
 
         def get_clean_dob(s):
-            if s is np.nan:
-                return None
             if s.endswith(")"):
                 s = s[:-len(" (67)")]
             return pd.to_datetime(s)
 
-        bio_df0["DOB"] = bio_df0["DOB"].apply(get_clean_dob)
+        bio_df0["DOB"] = bio_df0["Birthdate"].fillna("").apply(get_clean_dob)
+        bio_df0 = bio_df0.drop(columns=["Birthdate"]) # redundant, I like the name DOB more
 
         self.clean_bio_df = bio_df0.drop(columns=["Reach", "HT/WT", "Weight", "Height"])
         return self.clean_bio_df
 
     def _parse_matches(self):
-        match_df = self.assign_fight_id(self.match_df)
+        match_df = self.match_df.assign(fight_id = get_fight_id(
+            fighter_id=self.match_df["FighterID"],
+            opponent_id=self.match_df["OpponentID"],
+            date=self.match_df["Date"]
+        ))
         self.clean_match_df = match_df.groupby("fight_id").first()\
             .reset_index()\
             .rename(columns={"Res.":"FighterResult"})
         return self.clean_match_df
 
     def _parse_stats(self):
-        stats_df = self.assign_fight_id(self.stats_df)
+        stats_df = self.stats_df.assign(fight_id = get_fight_id(
+            fighter_id=self.stats_df["FighterID"],
+            opponent_id=self.stats_df["OpponentID"],
+            date=self.stats_df["Date"]
+        ))
         ### format values
         unclean_cols = [
             'SDBL/A', 'SDHL/A', 'SDLL/A', 'TSL-TSA', '%BODY', 
@@ -106,6 +122,11 @@ class EspnDataCleaner(object):
         stats_clean_df["p_stats_zero"] = (stats_clean_df[stat_cols].fillna(0) == 0).mean(1)
         stats_clean_df["all_stats_null"] |= (stats_clean_df["p_stats_zero"] == 1)
 
+        # ESPN has a LOT of fights where no stats were collected. Either they leave it 
+        # blank or impute it as 0. We want to drop these fights because they are not 
+        # only useless, but misleading - they make it look like the fighter did nothing!
+        # so we drop fights where all stats are null or where all stats are 0.
+        # and in the case of duplicate fights, we keep the one with the most stats.
         self.clean_stats_df = stats_clean_df.query("~all_stats_null")\
             .sort_values("p_stats_zero")\
             .groupby(["fight_id", "FighterID", "OpponentID"])\
@@ -113,6 +134,26 @@ class EspnDataCleaner(object):
             .reset_index()\
             .drop(columns=["p_stats_zero"])
         return self.clean_stats_df
+
+    def _get_doubled_matches(self):
+        if self.clean_match_df is None:
+            self._parse_matches()
+        # clean_match_df contains exactly one row per fight
+
+        match_complement_df = self.clean_match_df.rename(columns={
+            "FighterID":"OpponentID",
+            "OpponentID":"FighterID",
+            "Opponent":"Fighter",
+        })
+        match_complement_df["FighterResult"] = match_complement_df["FighterResult"].replace({
+            "W":"L", "L":"W", "D":"D"
+        })
+        # dropping this Opponent column because it's just a name, not an ID
+        doubled_match_df = pd.concat([self.clean_match_df, match_complement_df], axis=0)\
+            .reset_index(drop=True)
+        # doubled_match_df = doubled_match_df.drop(columns=["Opponent"])
+        return doubled_match_df
+
         
     def parse_all(self):
         print("--- parsing bios ---")
@@ -121,41 +162,31 @@ class EspnDataCleaner(object):
         self._parse_matches()
         print("--- parsing stats ---")
         self._parse_stats()
-
-        fighter_stats = self.clean_match_df.merge(
-            self.clean_stats_df.drop(columns=["Date", "Opponent", "Event", "OpponentID"]),
-            how="left",
-            left_on=["fight_id", "FighterID"],
-            right_on=["fight_id", "FighterID"],
+        print("--- putting it all together ---")
+        doubled_match_df = self._get_doubled_matches()
+        # for each fight, get the Fighter's stats
+        right = self.clean_stats_df.drop(
+            columns=["Date", "Event", "OpponentID", "Opponent"]
         )
-        opponent_stats = self.clean_match_df.drop(columns=["OpponentID"]).merge(
-            self.clean_stats_df.drop(columns=["Date", "Opponent", "Event", "FighterID"]),
+        match_stats_df = doubled_match_df.merge(
+            right,
             how="left",
-            left_on=["fight_id", "FighterID"],
-            right_on=["fight_id", "OpponentID"],
+            on=["fight_id", "FighterID"],
         )
-
-        drop_cols = [
-            'Date',
-            'Decision',
-            'Event',
-            'FighterID',
-            'FighterResult',
-            'Opponent',
-            'OpponentID',
-            'Rnd',
-            'Time',
-            'all_stats_null',
-        ]
-
-        match_stat_df = fighter_stats.merge(
-            opponent_stats.drop(columns=drop_cols),
-            on="fight_id",
-            how="outer",
+        # now, for each fight, get the Opponent's stats
+        right = self.clean_stats_df.drop(
+            columns=["Date", "Event", "OpponentID", "Opponent"]
+        ).rename(columns={
+            "FighterID": "OpponentID",
+        })
+        match_stats_df = match_stats_df.merge(
+            right,
+            how="left",
+            on=["fight_id", "OpponentID"],
             suffixes=("", "_opp"),
         )
 
-        self.espn_df = match_stat_df.merge(
+        espn_df = match_stats_df.merge(
             self.clean_bio_df,
             on="FighterID",
             how="left",
@@ -166,17 +197,14 @@ class EspnDataCleaner(object):
             how="left",
             suffixes=("", "_opp"),
         )
+        
+        espn_df["Date"] = pd.to_datetime(espn_df["Date"])
+        espn_df["FighterName"] = espn_df["Name"].fillna(espn_df["Fighter"])
+        espn_df["OpponentName"] = espn_df["Name_opp"].fillna(espn_df["Opponent"])
+        espn_df = espn_df.drop(columns=["Name", "Name_opp", "Fighter", "Opponent"])
+        for col in ["FighterName", "OpponentName"]:
+            espn_df[col] = espn_df[col].str.lower().str.strip()
+
+        self.espn_df = espn_df
         return self.espn_df
 
-
-if __name__ == "__main__":
-
-    folder = "scrape/scraped_data/mma/espn/"
-    bio_path = folder+"espn_bios_2022-05-20.csv"
-    stats_path = folder+"espn_stats_2022-05-20.csv"
-    match_path = folder+"espn_matches_2022-05-20.csv"
-
-    DC = EspnDataCleaner(stats_path, bio_path, match_path)
-    DC.parse_all()
-
-    DC.espn_df.to_csv("data/espn_data.csv", index=False)

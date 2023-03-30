@@ -1,28 +1,42 @@
 import numpy as np
 import pandas as pd
+from db import base_db_interface
 
 
 class UfcDataCleaner(object):
     # I still havent' figured out what to do with round stats!
 
-    def __init__(self, totals_path, strikes_path, events_path, desc_path):
-        self.totals_df = pd.read_csv(totals_path)
-        self.strikes_df = pd.read_csv(strikes_path)
-        self.event_df = pd.read_csv(events_path)
-        self.desc_df = pd.read_csv(desc_path)
+    def __init__(self):
+        self.totals_df = base_db_interface.read("ufc_totals")
+        self.strikes_df = base_db_interface.read("ufc_strikes")
+        self.events_df = base_db_interface.read("ufc_events")
+        self.desc_df = base_db_interface.read("ufc_fight_description")
+        self.upcoming_fights_df = base_db_interface.read("ufc_upcoming_fights")
 
         self.clean_totals_df = None 
         self.clean_strikes_df = None 
         self.clean_events_df = None 
         self.clean_desc_df = None
+        self.clean_upcoming_df = None
+
+    @staticmethod
+    def get_clean_fighter_id(fighter_id_vec):
+        return fighter_id_vec.str.split("/fighter-details/").str[1]
         
     def _parse_totals(self):
+        """
+        Get clean_totals_df, a cleaned version of totals_df
+        """
         totals_clean_df = self.totals_df.rename(columns={
             "Sub. att": "SM",
             "Rev.": "RV",
         })
+        totals_clean_df["SM"] = totals_clean_df["SM"].astype(int)
+        totals_clean_df["RV"] = totals_clean_df["RV"].astype(int)
+
+        totals_clean_df["FighterID"] = self.get_clean_fighter_id(totals_clean_df["FighterID"])
         totals_clean_df["SSL"] = np.nan
-        inds = totals_clean_df["Sig. str."].str.contains("of")
+        # inds = totals_clean_df["Sig. str."].str.contains("of")
         totals_clean_df["SSL"] = totals_clean_df["Sig. str."].str.split("of").str[0].astype(int)
         totals_clean_df["SSA"] = totals_clean_df["Sig. str."].str.split("of").str[1].astype(int)
         totals_clean_df["TSL"] = totals_clean_df["Total str."].str.split("of").str[0].astype(int)
@@ -38,11 +52,16 @@ class UfcDataCleaner(object):
         )
         self.clean_totals_df = totals_clean_df.drop(columns=[
             "Sig. str.", "Sig. str. %", "Total str.", "Td", "Td %", "Ctrl",
+            "Fighter",
         ])
         return self.clean_totals_df
 
     def _parse_strikes(self):
+        """
+        Get clean_strikes_df, a cleaned version of the ufc_strikes table.
+        """
         strikes_clean_df = self.strikes_df.copy()
+        strikes_clean_df["FighterID"] = self.get_clean_fighter_id(strikes_clean_df["FighterID"])
         strikes_clean_df["SHL"] = strikes_clean_df["Head"].str.split("of").str[0].astype(int)
         strikes_clean_df["SHA"] = strikes_clean_df["Head"].str.split("of").str[1].astype(int)
 
@@ -61,23 +80,67 @@ class UfcDataCleaner(object):
         strikes_clean_df["SGL"] = strikes_clean_df["Ground"].str.split("of").str[0].astype(int)
         strikes_clean_df["SGA"] = strikes_clean_df["Ground"].str.split("of").str[1].astype(int)
 
+        # dropping Sig. str because it's already in clean_totals_df
+        # Sig. str. % is derived from Sig. str, and imo just a bad statistic,
+        # so it's not worth keeping. Head, Body, etc have been parsed into
+        # SHL, SHA, SBL, SBA, etc.
         self.clean_strikes_df = strikes_clean_df.drop(columns=[
-            "Sig. str", "Sig. str. %", "Head", "Body", "Leg", "Distance", "Clinch", "Ground"
+            "Sig. str", "Sig. str. %", "Head", "Body", "Leg", "Distance", "Clinch", "Ground",
+            "Fighter",
         ])
 
     def _parse_events(self):
-        event_clean_df = self.event_df.rename(columns={
+        """
+        Get clean_events_df, a cleaned version of events_df, which is 
+        from the ufc_events table in mma.db
+        """
+        event_clean_df = self.events_df.rename(columns={
             "Weight class": "weight_class",
             "Method": "method",
             "Round": "round", 
             "Location": "location",
-        })[["weight_class", "method", "round", "location", "img_png_url",
-            "Time", "is_title_fight", "FightID", "EventUrl", "Date"]]
+            "FighterUrl": "FighterID",
+            "OpponentUrl": "OpponentID",
+            "Kd": "KD_event_str",
+            "Str": "Str_event_str",
+            "Td": "Td_event_str",
+            "Sub": "Sub_event_str",
+        })
+        event_clean_df["FighterID"] = self.get_clean_fighter_id(event_clean_df["FighterID"])
+        event_clean_df["OpponentID"] = self.get_clean_fighter_id(event_clean_df["OpponentID"])
         event_clean_df["time_seconds"] = (
             event_clean_df["Time"].str.split(":").str[0].astype(int) * 60 +
             event_clean_df["Time"].str.split(":").str[1].astype(int)
         )
-        self.clean_events_df = event_clean_df.drop(columns=["Time"])
+        event_clean_df = event_clean_df.drop(columns=["Time"])
+        self.clean_events_df = event_clean_df
+
+    def _get_doubled_event_df(self):
+        """
+        Each event is represented once in the ufc_events table. However, it is 
+        useful to have each event represented twice, once for each fighter as the 
+        Fighter, and once as Opponent. This function returns a dataframe with
+        self.clean_events_df concat'ed with a complement of self.clean_events_df.
+        """
+        if self.clean_events_df is None:
+            self._parse_events()
+        # okay, let's get the complement of event_clean_df
+        event_complement_df = self.clean_events_df.rename(columns={
+            "FighterID": "OpponentID",
+            "OpponentID": "FighterID",
+            "FighterName": "OpponentName",
+            "OpponentName": "FighterName",
+        })
+        event_complement_df["W/L"] = event_complement_df["W/L"].replace("win", "loss")
+        drop_cols = [
+            "KD_event_str", "Str_event_str", "Td_event_str", "Sub_event_str",
+            "Fighter",
+        ]
+        event_clean_df = self.clean_events_df.drop(columns=drop_cols)
+        event_complement_df = event_complement_df.drop(columns=drop_cols)
+        return pd.concat([event_clean_df, event_complement_df], axis=0)\
+            .reset_index(drop=True)
+        
 
     def _parse_descriptions(self):
         df = self.desc_df.rename(columns={
@@ -112,49 +175,94 @@ class UfcDataCleaner(object):
         round_formats = time_format.str.split("(").str[1].str[:-1]\
             .apply(lambda x: [int(s) for s in x.split("-")])
         max_time = round_formats.apply(np.sum) * 60
-        round_index = (df["round_description"] - 1)
+        round_index = (df["round_description"].astype(int) - 1)
         time_dur = pd.Series(
             [np.sum(round_format[:final_round]) * 60 for final_round, round_format 
             in zip(round_index, round_formats)]
         ) + seconds_into_round
         self.clean_desc_df = df.assign(max_time=max_time, time_dur=time_dur)
 
+    def _parse_upcoming_fights(self):
+        """
+        Parse the upcoming fights table, and add the fighter IDs to it.
+        """
+        upcoming_fights_df = self.upcoming_fights_df.rename(columns={
+            "Weight class": "weight_class",
+            "FighterUrl": "FighterID",
+            "OpponentUrl": "OpponentID",
+            "Location": "location",
+        })[[
+            "weight_class", "FighterID", "OpponentID", "location",
+            "Date", "EventUrl", "FightID", "FighterName", "OpponentName",
+            "fight_rank_on_card",
+        ]]
+        upcoming_fights_complement_df = upcoming_fights_df.rename(columns={
+            "FighterID": "OpponentID",
+            "OpponentID": "FighterID",
+            "FighterName": "OpponentName",
+            "OpponentName": "FighterName",
+        })
+        upcoming_fights_df = pd.concat(
+            [upcoming_fights_df, upcoming_fights_complement_df], axis=0
+        ).reset_index(drop=True)
+        upcoming_fights_df["FighterID"] = self.get_clean_fighter_id(upcoming_fights_df["FighterID"])
+        upcoming_fights_df["OpponentID"] = self.get_clean_fighter_id(upcoming_fights_df["OpponentID"])
+        upcoming_fights_df["is_upcoming"] = True
+        self.clean_upcoming_fights_df = upcoming_fights_df
+
 
     def parse_all(self):
+        """
+        Parse ufc_events, ufc_strikes, ufc_totals, ufc_fight_description,
+        and merge them into a single dataframe, ufc_df. 
+        ufc_df should have two rows per fight, and columns for all the information
+        about the fight.
+        """
         self._parse_events()
         self._parse_strikes()
         self._parse_totals()
         self._parse_descriptions()
-        temp_ufc_df = self.clean_totals_df.merge(
-            self.clean_strikes_df.drop(columns=["Fighter"]),
-            on=["FighterID", "FightID"],
-            how="inner",
-        ).merge(
-            self.clean_events_df,
-            on=["FightID"],
-            how="inner",
-        ).merge(
+        self._parse_upcoming_fights()
+
+        doubled_events_df = self._get_doubled_event_df()
+        # merge events with descriptions
+        ufc_df = doubled_events_df.merge(
             self.clean_desc_df,
             on=["FightID"],
             how="left",
-        ).rename(columns={
-            "Fighter": "FighterName",
-        })
-
-        fighter_rows = temp_ufc_df.groupby("FightID").first()
-        opponent_rows = temp_ufc_df.groupby("FightID").last()
-        # Drop columns about the event or the fight description
-        # from the opponent rows because they're redundant. Still
-        # need FightID though
-        drop_cols = (
-            set(self.clean_events_df.columns) | 
-            set(self.clean_desc_df.columns)
-        ) - {"FightID"}
-        self.ufc_df = fighter_rows.join(
-            opponent_rows.drop(columns=drop_cols),
-            lsuffix="", rsuffix="_opp"
-        ).reset_index()
-        return self.ufc_df 
+        )
+        # add totals for fighter and opponent
+        ufc_df = ufc_df.merge(
+            self.clean_totals_df,
+            on=["FighterID", "FightID"],
+            how="left",
+        ).merge(
+            self.clean_totals_df.rename(columns={
+                "FighterID": "OpponentID",
+            }),
+            on=["OpponentID", "FightID"],
+            how="left",
+            suffixes=("", "_opp")
+        )
+        # add strikes for fighter and opponent
+        ufc_df = ufc_df.merge(
+            self.clean_strikes_df,
+            on=["FighterID", "FightID"],
+            how="left",
+        ).merge(
+            self.clean_strikes_df.rename(columns={
+                "FighterID": "OpponentID",
+            }),
+            on=["OpponentID", "FightID"],
+            how="left",
+            suffixes=("", "_opp")
+        )
+        ufc_df = pd.concat([ufc_df, self.clean_upcoming_fights_df], axis=0)\
+            .reset_index(drop=True)
+        ufc_df["is_upcoming"] = ufc_df["is_upcoming"].fillna(False)
+        ufc_df["Date"] = pd.to_datetime(ufc_df["Date"])
+        self.ufc_df = ufc_df
+        return self.ufc_df
 
 
 

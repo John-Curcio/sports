@@ -1,32 +1,77 @@
 import pandas as pd
 import numpy as np
+from wrangle.base_maps import *
+from db import base_db_interface
+
+def get_fight_id(fighter_id, opponent_id, date):
+    """
+    Get unique fight ID for each fight. Arguments must have aligned indices
+    * fighter_id
+    * opponent_id
+    * date
+    """
+    max_id = np.maximum(fighter_id.fillna("unknown"), 
+                        opponent_id.fillna("unknown"))
+    min_id = np.minimum(fighter_id.fillna("unknown"),
+                        opponent_id.fillna("unknown"))
+    date = pd.to_datetime(date).dt.date
+    return date.astype(str) + "_" + min_id + "_" + max_id
 
 
 class IsomorphismFinder(object):
     """
-    Learn mapping btw FighterIDs in df1 and FighterIDs in df2
+    Learn map btw FighterIDs in df_canon and FighterIDs in df_aux
+
+    Objective is to learn mapping FighterID_aux --> FighterID_canon.
+    df_aux might have multiple FighterIDs that correspond to the same
+    FighterID_canon, so we need to learn a surjection.
+
+    Attributes:
+    * df_canon 
+    * df_aux
+    * fighter_id_map: pd.Series mapping FighterID_aux --> FighterID_canon
+    * conflict_fights
     """
-    
-    def __init__(self, df1, df2, manual_mapping=None):
-        self.df1 = self.get_double_df(df1)
-        self.df2 = self.get_double_df(df2)
-        self.frontier_fighter_id1_vals = pd.concat([self.df1["FighterID"], 
-                                                    self.df1["OpponentID"]])
-        self.frontier_fighter_id2_vals = pd.concat([self.df2["FighterID"], 
-                                                    self.df2["OpponentID"]])
-        for df in [self.df1, self.df2]:
-            for col in ["FighterName", "OpponentName"]:
-                df[col] = self.clean_names(df[col])
+
+    def __init__(self, df_canon, df_aux, manual_map=None):
+        """
+        * df_canon - dataframe with columns "FighterID", "OpponentID",
+            "FighterName", "OpponentName", "Date". This is the "canonical"
+            dataframe, i.e. the one with the more reliable FighterIDs.
+        * df_aux - dataframe with columns "FighterID", "OpponentID",
+            "FighterName", "OpponentName", "Date". This is the "auxiliary"
+            dataframe, i.e. the one with the less reliable FighterIDs.
+        * manual_map - dictionary mapping FighterID_aux --> FighterID_canon.
+            This is a manual mapping that we can use to help the algorithm
+            learn the mapping, starting from manual_map as ground truth.
+            manual_map will be smaller than the full mapping, because
+            manual_map only contains mappings for a few FighterID pairs 
+            that we somehow already know.
+        """
+        self.df_canon = self.get_double_df(df_canon)
+        self.df_aux = self.get_double_df(df_aux)
+        for col in ["FighterName", "OpponentName"]:
+            self.df_canon[col] = self.clean_names(self.df_canon[col])
+            self.df_aux[col] = self.clean_names(self.df_aux[col])
         self.fighter_id_map = pd.Series(dtype='object')
-        if manual_mapping is not None:
-            index, vals = zip(*manual_mapping.items()) # gets keys and values of dict respectively
+        if manual_map is not None:
+            index, vals = zip(*manual_map.items())
             self.fighter_id_map = pd.Series(vals, index=index, dtype='object')
         self.conflict_fights = None
         
     @staticmethod
     def get_double_df(df):
+        """
+        Make sure that each fight is represented exactly twice in the 
+        dataframe, once for each fighter as "Fighter" and then again
+        as "Opponent". This makes it easier to join.
+        Also, drop fights with missing FighterID or OpponentID.
+        * df - dataframe with columns "FighterID", "OpponentID",
+            "FighterName", "OpponentName", "Date"
+        """
+        df = df.dropna(subset=["FighterID", "OpponentID"])
         # edges are bidirectional
-        fight_id = IsomorphismFinder.get_fight_id(df)
+        fight_id = get_fight_id(df["FighterID"], df["OpponentID"], df["Date"])
         df = df[["Date", "FighterID", "OpponentID", "FighterName", "OpponentName"]]\
             .assign(fight_id = fight_id)\
             .drop_duplicates("fight_id")
@@ -35,412 +80,512 @@ class IsomorphismFinder(object):
             "FighterName":"OpponentName", "OpponentName":"FighterName",
         })
         df_doubled = pd.concat([df, df_complement]).reset_index(drop=True)
+        # remove fights where one of the fighters may have fought twice on the same day
+        # this is a rare case, but it happens, and it messes up the join
+        # df_doubled = df_doubled.groupby(["FighterID", "Date"]).filter(lambda x: len(x) == 1)
         return df_doubled
-
-    @staticmethod
-    def get_fight_id(df):
-        max_id = np.maximum(df["FighterID"], df["OpponentID"])
-        min_id = np.minimum(df["FighterID"], df["OpponentID"])
-        return df["Date"].astype(str) + "_" + min_id + "_" + max_id
-
-    
-    @staticmethod
-    def get_fight_id(df):
-        max_id = np.maximum(df["FighterID"], df["OpponentID"])
-        min_id = np.minimum(df["FighterID"], df["OpponentID"])
-        return df["Date"].astype(str) + "_" + min_id + "_" + max_id
     
     def _catch_conflicts_in_merge(self, df):
-        counts = df.groupby("FighterID1")["FighterID2"].nunique()
+        """
+        So we want to learn a mapping btw FighterID_aux and FighterID_canon.
+        We represent this by merging df_aux and df_canon, and for each
+        fight, we have FighterID_aux and FighterID_canon for the Fighter
+        and the Opponent.
+        If the same FighterID_aux maps to multiple FighterID_canons, then
+        we have a conflict. This function checks for conflicts.
+
+        TODO: this error message could be a lot more informative!
+        """
+        # we want to learn a mapping FighterID_aux -> FighterID_canon
+        # can't have one FighterID_aux map to multiple FighterID_canon
+        counts = df.groupby("FighterID_aux")["FighterID_canon"].nunique()
         if any(counts > 1):
             print(f"Found {sum(counts > 1)} conflicts")
-            conflict_fighter_id1s = counts[counts > 1].index
-            conflict_fighter_names = df["FighterName"]\
-                .loc[df["FighterID1"].isin(conflict_fighter_id1s)]\
+            conflict_fighter_id_auxs = counts[counts > 1].index
+            # print conflicting fighter_id_aux's and the multiple fighter_id_canons they are associated with
+            conflict_associations = df.loc[df["FighterID_aux"].isin(conflict_fighter_id_auxs)]\
+                [['FighterID_aux', 'FighterID_canon']]\
+                    .value_counts()\
+                    .reset_index()\
+                    .rename(columns={0:"count"})\
+                    .sort_values(["FighterID_aux", "count"], ascending=False)
+                # .groupby("FighterID_aux")["FighterID_canon"]\
+                # .unique()\
+                # .apply(lambda x: ", ".join(x))
+            print(f"conflict associations: \n{conflict_associations}")
+            # print conflicting fighter names
+
+            conflict_fighter_names = df["FighterName_canon"]\
+                .loc[df["FighterID_canon"].isin(conflict_fighter_id_auxs)]\
                 .unique()
             print(f"fighter names with conflicts: {conflict_fighter_names}")
-            self.conflict_fights = df.loc[df["FighterID1"].isin(conflict_fighter_id1s)]\
+            self.conflict_fights = df.loc[df["FighterID_aux"].isin(conflict_fighter_id_auxs)]\
                 .sort_values("Date")
-            print(self.conflict_fights)
-            raise Exception("Clean up conflicts with these FighterIDs in df2, then try again")
+            cols = [
+                # "Date", 
+                # "FighterID_canon", "FighterID_aux",
+                # "OpponentID_canon", "OpponentID_aux",
+
+                "Date", "FighterName_canon", "FighterName_aux", 
+                "FighterID_aux", "FighterID_canon",
+                "OpponentName_canon", "OpponentName_aux",
+                "OpponentID_aux", "OpponentID_canon"
+            ]
+            print(self.conflict_fights[cols])
+            # print(self.conflict_fights.drop(columns=["fight_id_canon", "fight_id_aux"]))
+            raise Exception("Found conflicts")
         return None
     
     def find_base_map(self):
+        """
+        This is like the base case of the find_isomorphism loop. 
+        * We start by inner joining df_aux and df_canon on Date, FighterName, 
+        and OpponentName. These are rows where fighters have the same names
+        as in df_aux and df_canon. It is extremely unlikely that in reality, two 
+        pairs of fighters with the same names fought on the same day. 
+        In find_isomorphism, we take this as ground truth, and then 
+        broadcast outwards. 
+        * 
+        """
         cols = ["Date", "FighterName", "OpponentName", "FighterID", "OpponentID"]
-        overlapping_fights = self.df1[cols].merge(
-            self.df2[cols],
+        overlapping_fights = self.df_canon[cols].merge(
+            self.df_aux[cols],
             how="inner", 
             on=["Date", "FighterName", "OpponentName"],
-            suffixes=("1", "2"),
-        ) 
-        ####
-        overlapping_fights2 = self.df1[cols].merge(
-            self.df2[cols],
-            how="inner",
-            left_on=["Date", "FighterName", "OpponentName"],
-            right_on=["Date", "OpponentName", "FighterName"],
+            suffixes=("_canon", "_aux"),
         )
-        overlapping_fights = pd.concat([overlapping_fights, overlapping_fights2])
-        ####
-        self._catch_conflicts_in_merge(overlapping_fights)
-        temp_map = overlapping_fights.groupby("FighterID1")["FighterID2"].first()
-        self.fighter_id_map = self.fighter_id_map.combine_first(temp_map) 
+        overlapping_fights["FighterName_canon"] = overlapping_fights["FighterName"]
+        overlapping_fights["OpponentName_canon"] = overlapping_fights["OpponentName"]
+        overlapping_fights["FighterName_aux"] = overlapping_fights["FighterName"]
+        overlapping_fights["OpponentName_aux"] = overlapping_fights["OpponentName"]
+        self._update_fighter_id_map(overlapping_fights)
+
+    def _update_fighter_id_map(self, df):
+        """
+        Update self.fighter_id_map based on df, checking for conflicts
+        and throwing an error if there are any.
+        * df - dataframe with columns "FighterID_aux", "FighterID_canon"
+        """
+        # check to see whether df has duplicate FighterID_aux -> FighterID_canon mappings
+        self._catch_conflicts_in_merge(df)
+        # if df has no conflicts within itself, then we can safely
+        # use .first() to find the mapping FighterID_aux -> FighterID_canon
+        map_update = df.groupby("FighterID_aux")["FighterID_canon"].first()
+        # then, check to see whether map_update conflicts with fighter_id_map
+        idx = self.fighter_id_map.index.intersection(map_update.index)
+        conflicts = self.fighter_id_map.loc[idx].compare(map_update.loc[idx])
+        if len(conflicts) > 0:
+            print(conflicts)
+            raise Exception("Found conflicts btw map_update and fighter_id_map")
+        # if no conflicts, then update fighter_id_map
+        self.fighter_id_map = self.fighter_id_map.combine_first(map_update)
     
+    def get_tournament_dates(self, df):
+        """
+        A minority of these fights were held in a tournament format, 
+        where fighters fought multiple opponents on the same day. This makes
+        it harder to learn the mapping btw FighterID_aux and FighterID_canon.
+        So we'd like to identify fights that were held in tournament events, 
+        and then treat them differently in find_isomorphism.
+        """
+        # get Date, FighterID counts of opponents
+        counts = df.groupby(["Date", "FighterID"])["OpponentID"].nunique()
+        # then, for (Date, FighterID) pairs with > 1 opponent, we get 
+        # the dates of those fights, which we return
+        return counts[counts > 1].index.get_level_values("Date").unique()
+
+    def _find_frontier_of_map(self, df_aux, df_canon):
+        """
+        Given that self.fighter_id_map maps FighterID_aux to FighterID_canon correctly,
+        find the frontier of the map. The frontier is the set of FighterID_auxs
+        for which we don't know the corresponding FighterID_canon, but for whom 
+        we know the FighterID_canon of their opponents. 
+
+        Returns the result of a merge between df_aux and df_canon, 
+        """
+        # find mystery fighter_id_auxs with fights with opponents 
+        # for whom we know opponent_id_aux -> opponent_id_canon
+        # call this the "frontier" since it's at the edge of what we know
+        unknown_fighter_id = ~df_aux["FighterID"].isin(self.fighter_id_map.index)
+        known_opponent_id = df_aux["OpponentID"].isin(self.fighter_id_map.index)
+        df_aux_frontier = df_aux.loc[unknown_fighter_id & known_opponent_id].copy()
+        # okay, now we actually add opponent_id_canon to df_aux_frontier
+        # to facilitate the upcoming merge
+        df_aux_frontier = df_aux_frontier.rename(columns={"OpponentID":"OpponentID_aux"})
+        df_aux_frontier["OpponentID_canon"] = df_aux_frontier["OpponentID_aux"].map(self.fighter_id_map)
+        # okay here's where the magic happens. df_aux_frontier is the 
+        # set of fights where we know the opponent_id_canon, but not the
+        # fighter_id_canon. If we inner join df_aux_frontier and df_canon
+        # on date and opponent_id_canon, then those fights are linked. 
+        # fighter_id_aux must therefore correspond to fighter_id_canon.
+        df_inner = df_aux_frontier.merge(
+            df_canon, how="inner", 
+            left_on=["Date", "OpponentID_canon"],
+            right_on=["Date", "OpponentID"],
+            suffixes=("_aux", "_canon"),
+        )#.rename(columns={"FighterName_aux": "FighterName", "OpponentName_aux": "OpponentName"})
+        return df_inner
+
     def find_isomorphism(self, n_iters=3):
+        """
+        This is where the magic happens. We want to learn the full
+        mapping btw IDs in df_aux --> df_canon, which is stored in self.fighter_id_map. 
+        We do this with a greedy, iterative process.
+
+        * "Base" step: We start by running find_base_map(), which is just 
+        inner-joining on fighter names and date. That gives us a subset of the full 
+        mapping btw IDs in df_aux --> df_canon, which we want to learn.
+        * "Propagate" step: Based on this subset of the mapping, we find FighterIDs 
+        in df_aux and df_canon that fought a lot of known opponents. We call this set of 
+        FighterIDs the "frontier" of the map, and we then try to 
+        link these FighterIDs to each other. For example:
+
+            * Suppose U_aux, U_canon are unknown fighter IDs in df_aux and df_canon, 
+            respectively.
+            * In df_aux, U_aux fought a, b, c, and d, all of whom we know the mapping for.
+            In df_canon, U_canon fought a, b, c, and d as well. And furthermore, 
+            * U_canon did it on the same dates as U_aux. 
+            * It's probably the case that U_aux and U_canon are the same guy!
+            * So we add U_aux -> U_canon to our mapping.
+        
+        At the end, we check for conflicts. If there are conflicts, we print
+        out the conflicting fights and raise an exception. If not, update 
+        the mapping and repeat.
+
+        TODO: this propagation step might be too eager. I might want to try
+        to be more conservative, and only add a mapping for one fighter at a time.
+        That one fighter would be the one with the most fights with known opponents.
+        """
         self.find_base_map()
-        for _ in range(n_iters):            
-            # update mapping greedily
-            # find missing fighter_id1 with most fights with known opponent_id1
-            # okay, find fighter_id1s with missing fighter_id2s
-            # then for each of these, find # fights with known opponent_id2s
-            missing_fighter_id1 = ~self.df1["FighterID"].isin(self.fighter_id_map.index)
-            known_opponent_id2 = self.df1["OpponentID"].isin(self.fighter_id_map.index)
-            df1_sub = self.df1.loc[missing_fighter_id1 & known_opponent_id2]
-            # okay, let's figure out what df2 is calling this fighter
-            df1_sub = df1_sub.rename(columns={"OpponentID":"OpponentID1"})
-            df1_sub["OpponentID2"] = df1_sub["OpponentID1"].map(self.fighter_id_map)
-            df_inner = df1_sub.merge(
-                self.df2, how="inner", 
-                left_on=["Date", "OpponentID2"],
-                right_on=["Date", "OpponentID"],
-                suffixes=("1", "2"),
-            ).rename(columns={"FighterName1": "FighterName", "OpponentName1": "OpponentName"})
-            self._catch_conflicts_in_merge(df_inner)
-            temp_map = df_inner.groupby("FighterID1")["FighterID2"].first()
-            self.fighter_id_map = self.fighter_id_map.combine_first(temp_map)
-            if len(df_inner) == 0:
-                self.stray_fights = df1_sub
+        # get dates of tournament fights
+        aux_tournament_dates = self.get_tournament_dates(self.df_aux)
+        canon_tournament_dates = self.get_tournament_dates(self.df_canon)
+        tournament_dates = aux_tournament_dates.union(canon_tournament_dates)
+        # remove tournament fights from df_aux and df_canon
+        df_aux_sub = self.df_aux[~self.df_aux["Date"].isin(tournament_dates)]
+        df_canon_sub = self.df_canon[~self.df_canon["Date"].isin(tournament_dates)]
+        for _ in range(n_iters):
+            print(f"iteration {_} of {n_iters}. map has size {len(self.fighter_id_map)} fighters mapped")
+            frontier_of_map_df = self._find_frontier_of_map(df_aux_sub, df_canon_sub)
+            print(f"frontier of map has size {len(frontier_of_map_df)} fights")
+            # print(f"blank canon names: {(frontier_of_map_df['FighterName_canon'] == '').sum()}")
+            self._update_fighter_id_map(frontier_of_map_df)
+            # self._catch_conflicts_in_merge(frontier_of_map_df)
+            if len(frontier_of_map_df) == 0:
+                stray_inds = (
+                    ~self.df_aux["FighterID"].isin(self.fighter_id_map.index) &
+                    ~self.df_aux["OpponentID"].isin(self.fighter_id_map.index)
+                )
+                self.stray_fights = df_aux_sub.loc[stray_inds]
+                print(f"no more fights in frontier to add to map. map has size {len(self.fighter_id_map)} fighters mapped. {len(self.stray_fights)} fights left unaccounted for.")
                 break
+        # okay, now we finally include tournament fights
+        # Some fighters fought in non-tournament-style fights, so we have 
+        # probably learned their mappings already. So now let's try propagating
+        # those mappings to the tournament fights.
+        print("okay, now we finally include tournament fights")
+        for _ in range(n_iters):
+            print(f"iteration {_} of {n_iters}. map has size {len(self.fighter_id_map)} fighters mapped")
+            frontier_of_map_df = self._find_frontier_of_map(self.df_aux, self.df_canon)
+            # print(f"blank canon names: {(frontier_of_map_df['FighterName_canon'] == '').sum()}")
+            self._update_fighter_id_map(frontier_of_map_df)
+            # self._catch_conflicts_in_merge(frontier_of_map_df)
+            if len(frontier_of_map_df) == 0:
+                stray_inds = (
+                    ~self.df_aux["FighterID"].isin(self.fighter_id_map.index) &
+                    ~self.df_aux["OpponentID"].isin(self.fighter_id_map.index)
+                )
+                self.stray_fights = df_aux_sub.loc[stray_inds]
+                print(f"no more fights to map. map has size {len(self.fighter_id_map)} fighters mapped. {len(self.stray_fights)} fights left unaccounted for.")
+                break
+        
+        return self.fighter_id_map
     
     @staticmethod
     def clean_names(names):
-        replace_dict = {
-            "julianna peña": "julianna pena",
-            "marco polo reyes": "polo reyes",
-            "brad scott": "bradley scott",
-            "nicholas musoke": "nico musoke",
-            "paddy holohan": "patrick holohan",
-            "alatengheili": "alateng heili",
-            "ode osbourne": "ode' osbourne",
-            "zhang tiequan": "tiequan zhang",
-            "aleksandra albu": "alexandra albu",
-            "alvaro herrera mendoza": "alvaro herrera",
-            "sumudaerji": "su mudaerji",
-            "mark madsen": "mark o. madsen",
-            "pingyuan liu": "liu pingyuan",
-            "robert mcdaniel": "bubba mcdaniel",
-            "aoriqileng": "aori qileng",
-            "robert sanchez": "roberto sanchez",
-            "patrick smith": "patrick trey smith",
-            "aleksandra albu": "alexandra albu",
-            "jiří procházka": "jiri prochazka",
-        }
-        to_replace, value = zip(*replace_dict.items()) # gets keys and values of dict respectively
+        to_replace, value = zip(*NAME_REPLACE_DICT.items()) # gets keys and values of dict respectively
         names = names.fillna("").str.strip().str.lower()\
                 .replace(to_replace=to_replace, value=value)
         return names
 
-manual_ufc_espn_mapping = {
-    # chris brennan
-    "http://ufcstats.com/fighter-details/b19fc66613dc75b9": "2500426",
-    # courtney turner
-    "http://ufcstats.com/fighter-details/56f4b81ec4db61af": "2951489",
-    # patrick trey smith
-    "http://ufcstats.com/fighter-details/46c8ec317aff28ac": "2335742",
-    # ray wizard
-    "http://ufcstats.com/fighter-details/ea0ad155451ed1f5": "2951510",
-    # karine silva
-    'http://ufcstats.com/fighter-details/9d62c2d8ee151f08': '3309918',
-    # rinat fakhretdinov
-    'http://ufcstats.com/fighter-details/8f765fd5775a8873': '4712980',
-    # jason guida
-    'http://ufcstats.com/fighter-details/ce25b4ed82b1811b': '2354107',
-    # andrew martinez
-    'http://ufcstats.com/fighter-details/f8c2aba4815876b5': '3162579',
-    # maheshate
-    'http://ufcstats.com/fighter-details/8c1ca54b5089d199': '4895360',
-    # kyle driscoll
-    'http://ufcstats.com/fighter-details/e5e148d4363deff8': '4246527',
-    # JR/Marty Coughran
-    'http://ufcstats.com/fighter-details/8112c9a23dccc759': '4354427',
-    # Drew dimanlig
-    'http://ufcstats.com/fighter-details/cc2ad11b1f9d818b': '2559902',
-    # damon jackson
-    'http://ufcstats.com/fighter-details/29af297d9f1de0f8': '3099187',
-    # dan argueta
-    'http://ufcstats.com/fighter-details/e4ba58725825412d': '4815973',
-    # askar mozharov
-    'http://ufcstats.com/fighter-details/e92901944ce91909': '4217396',
-    # mabelly lima
-    'http://ufcstats.com/fighter-details/6135fd9665fbb74e': '4372190',
-    # mario rivera
-    'http://ufcstats.com/fighter-details/0f7210aa8d61af8d': '2951376',
-    # dan molina
-    'http://ufcstats.com/fighter-details/606136dee6f6ecea': '2556050',
-    # jeremy freitag
-    'http://ufcstats.com/fighter-details/a47e9ec288c91067': '2556758',
-    # naoki matsushita
-    'http://ufcstats.com/fighter-details/990060b2a68a7b82': '2553054',
-    # luciano azevedo
-    'http://ufcstats.com/fighter-details/9bcfb40dbcd50568': '2381679',
-    # thiago moises
-    'http://ufcstats.com/fighter-details/d945aae53e3e54e6': '3955778',
-    # gleidson cutis
-    'http://ufcstats.com/fighter-details/44a94bbde42246e4': '4372295',
-    # dayana silva
-    'http://ufcstats.com/fighter-details/b19aecbfbb5508cc': '3971629',
-    # gisele moreira
-    'http://ufcstats.com/fighter-details/6a125ba3ec37e27e': '4030631',
-    # patrick murphy
-    'http://ufcstats.com/fighter-details/eca7e064746c161a': '3039036',
-    # josh mcdonald
-    'http://ufcstats.com/fighter-details/b507a76087e3ed9f': '2527951',
-    # rafael de real
-    'http://ufcstats.com/fighter-details/e82b2adcaeff71ec': '2500780',
-    # trevor harris
-    'http://ufcstats.com/fighter-details/0e98b05d3cf6d271': '2969478',
-    # kenny ento
-    'http://ufcstats.com/fighter-details/daf9be103c1edbbd': '2965044',
-}
+def load_espn_df():
+    espn_df = base_db_interface.read("clean_espn_data")
+    espn_df["Date"] = pd.to_datetime(espn_df["Date"])
+    # don't have to clean up names. IsomorphismFinder.__init__()
+    # will do that for us
+    # drop certain fights
+    drop_fight_inds = pd.Series(False, index=espn_df.index)
+    for _, row in MANUAL_ESPN_DROP_FIGHTS.iterrows():
+        date, fighter_id, opponent_id = row["Date"], row["FighterID"], row["OpponentID"]
+        drop_fight_inds = drop_fight_inds | (
+            (espn_df["Date"] == date) &
+            (espn_df["FighterID"] == fighter_id) & 
+            (espn_df["OpponentID"] == opponent_id)
+        ) | (
+            (espn_df["Date"] == date) &
+            (espn_df["FighterID"] == opponent_id) & 
+            (espn_df["OpponentID"] == fighter_id)
+        )
+    espn_df = espn_df.loc[~drop_fight_inds]
+    # Fighter history may be split btw two IDs
+    return espn_df
 
-manual_espn_bfo_mapping = {
-    # 3041602/brianna-fortino
-    '3041602': '/fighters/Brianna-Fortino-13884',
-    # /3153355/uyran-carlos
-    '3153355': '/fighters/Uyran-Carlos-11754',
-    # 3146349/carlos-leal
-    '3146349': '/fighters/Carlos-Leal-Miranda-7744',
-    # 3153355/uyran-carlos
-    '3153355': '/fighters/Uyran-Carlos-11754',
-    # 4916590/diego-dias
-    '4916590': '/fighters/Diego-Dias-11750',
-    # 2431314/jacare-souza
-    '2431314': '/fighters/Ronaldo-Souza-725',
-    # 2555633/jj-ambrose
-#     '2555633': '/fighters/J-J-Ambrose-459',
-    # /2558487/tony-johnson-jr
-    '2558487': '/fighters/Tony-Johnson-918',
-    # 2504175/zachary-micklewright
-    '2504175': '/fighters/Zach-Micklewright-1651',
-    # rodrigo de lima
-    '3110330': '/fighters/Rodrigo-Goiana-de-Lima-4992',
-    # /4030644/marcelo-rojo
-    '4030644': '/fighters/Marcelo-Rojo-7706',
-    # 3083639/mike-erosa
-    '3083639': '/fighters/Mikey-Erosa-7707',
-#     '4335927/levy-saul-marroquin-salazar'
-    '4335927': '/fighters/Levy-Saul-Marroquin-7713',
-    '4063869': '/fighters/John-Castaneda-7396',
-    
-    '4423264': 'fighters/Tofiq-Musaev-9177',
-    '4306125': '/fighters/Gabe-Green-10506',
-    '4914568': '/fighters/Pete-Rodrigue-13104',
-    '3091146': '/fighters/Toninho-Gavinho-11224',
-    '3074493': '/fighters/Alexandra-Albu-7261',
-    '2509773': '/fighters/Shintaro-Ishiwatari-7509',
-    '2500906': '/fighters/Bozigit-Ataev-9050',
-    '4405109': '/fighters/Su-Mudaerji-9345',
-}
+def load_ufc_df():
+    ufc_df = base_db_interface.read("clean_ufc_data")
+    ufc_df["Date"] = pd.to_datetime(ufc_df["Date"])
+    drop_inds = ufc_df["FightID"].isin(MANUAL_UFC_DROP_FIGHTS)
+    ufc_df = ufc_df.loc[~drop_inds]
+    return ufc_df
 
-def join_ufc_and_espn(ufc_df, espn_df, ufc_espn_fighter_id_map):
-    """
-    fighter_id_map: mapping UFC ID --> ESPN ID
-    """
-    def get_fight_id(df):
-        max_id = np.maximum(df["FighterID"].fillna("unknown"), 
-                            df["OpponentID"].fillna("unknown"))
-        min_id = np.minimum(df["FighterID"].fillna("unknown"), 
-                            df["OpponentID"].fillna("unknown"))
-        return df["Date"].astype(str) + "_" + min_id + "_" + max_id
-    # okay, let's just create a fight_id for each, then join on fight_id
-    ufc_df = ufc_df.assign(
-        FighterID=ufc_df["FighterID"].map(ufc_espn_fighter_id_map),
-        OpponentID=ufc_df["OpponentID"].map(ufc_espn_fighter_id_map),
-    )
-    print(ufc_df.loc[ufc_df[["FighterID", "OpponentID"]].isnull().any(1), 
-                    ["FighterName", "FighterID", "OpponentName", "OpponentID", "Date"]].sort_values("Date"))
-    print(ufc_df.loc[ufc_df[["FighterID", "OpponentID"]].isnull().any(1), ["Date"]].value_counts())
-    ufc_df = ufc_df.assign(fight_id=get_fight_id(ufc_df))
-    espn_df = espn_df.assign(fight_id=get_fight_id(espn_df))
-    # ufc_df = ufc_df.drop(columns=['Date', 'FighterID', 'OpponentID'])
-    # ufc_df = ufc_df.drop(columns=['FighterID', 'OpponentID'])\
-    #     .rename(columns={"Date": "Date_ufc"})
+def load_bfo_df():
+    bfo_df = base_db_interface.read("bfo_fighter_odds")
+    bfo_df["FighterID"] = bfo_df["FighterHref"].str.split("/fighters/").str[1]
+    bfo_df["OpponentID"] = bfo_df["OpponentHref"].str.split("/fighters/").str[1]
+    bfo_df["Date"] = pd.to_datetime(bfo_df["Date"])
+    ### MANUAL CLEANING ###
+    # overwrite certain fighterIDs
+    to_replace, value = zip(*MANUAL_BFO_OVERWRITE_MAP.items())
+    bfo_df["FighterID"] = bfo_df["FighterID"].replace(to_replace, value)
+    bfo_df["OpponentID"] = bfo_df["OpponentID"].replace(to_replace, value)
+    return bfo_df
 
-    def get_deduped(df):
-        # remove duplicates, keeping the row with the fewest missing values
-        return df.assign(n_missing=df.isnull().sum(1))\
-            .sort_values("n_missing", ascending=True)\
-            .drop_duplicates(subset="fight_id", keep="first")
-    espn_df = get_deduped(espn_df)
-    ufc_df = get_deduped(ufc_df)
-    # deliberately add duplicates to ufc df: want to make sure fighter
-    # and opponent stats are matched up
-    col_map = dict()
-    for col in ufc_df.columns:
-        if col.startswith("Fighter"):
-            fighter_col, opp_col = col, "Opponent" + col[len("Fighter"):]
-            col_map[fighter_col] = opp_col
-            col_map[opp_col] = fighter_col
-        if col.endswith("_opp"):
-            opp_col, fighter_col = col, col[:-len("_opp")]
-            col_map[fighter_col] = opp_col
-            col_map[opp_col] = fighter_col
-    ufc_df2 = ufc_df.rename(columns=col_map)
-    ufc_df = pd.concat([ufc_df, ufc_df2]).reset_index(drop=True)
-    ufc_df_cols = [
-        "fight_id", "time_dur", "max_time", "weight_bout",
-        "method_description", "round_description", "time_description",
-        "time_format", "referee", "details_description",
-        "weight_class", "method", "round", "location", "img_png_url",
-        "is_title_fight", "EventUrl",
-        *col_map.keys()
-    ]
-    return espn_df.merge(ufc_df[ufc_df_cols], 
-        on=["fight_id", "FighterID", "OpponentID"], how="left", 
-        suffixes=("_espn", "_ufc"))
-
-def join_espn_and_bfo(espn_df, bfo_df, espn_bfo_fighter_id_map):
-    def get_fight_id(df):
-        max_id = np.maximum(df["FighterID"].fillna("unknown"), 
-                            df["OpponentID"].fillna("unknown"))
-        min_id = np.minimum(df["FighterID"].fillna("unknown"), 
-                            df["OpponentID"].fillna("unknown"))
-        return df["Date"].astype(str) + "_" + min_id + "_" + max_id
-    # okay, let's just create a fight_id for each, then join on fight_id
-    espn_df = espn_df.assign(
-        espn_fight_id=espn_df["fight_id"],
-        espn_fighter_id=espn_df["FighterID"],
-        espn_opponent_id=espn_df["OpponentID"],
-        FighterID=espn_df["FighterID"].map(espn_bfo_fighter_id_map),
-        OpponentID=espn_df["OpponentID"].map(espn_bfo_fighter_id_map),
-    )
-    espn_df = espn_df.assign(fight_id=get_fight_id(espn_df))
-    bfo_df = bfo_df.assign(fight_id=get_fight_id(bfo_df))\
-        .drop(columns=["FighterName", "OpponentName", "Event"])
-    # remove duplicates in BFO, keeping the row with the fewest missing values
-    bfo_df = bfo_df.assign(n_missing=bfo_df.isnull().sum(1))\
-        .sort_values("n_missing", ascending=True)\
-        .drop_duplicates(subset="fight_id", keep="first")\
-        .drop(columns=["n_missing"])
-    # okay, now i deliberately add duplicates. Want to make sure the fighter
-    # and opponent are matched with their respective odds!
-    rename_dict = {
-        "FighterID": "OpponentID",
-        "FighterOpen": "OpponentOpen",
-        "FighterCloseLeft": "OpponentCloseLeft",
-        "FighterCloseRight": "OpponentCloseRight",
-        "p_fighter_open_implied": "p_opponent_open_implied",
-        "OpponentID": "FighterID",
-        "OpponentOpen": "FighterOpen",
-        "OpponentCloseLeft": "FighterCloseLeft",
-        "OpponentCloseRight": "FighterCloseRight",
-        "p_opponent_open_implied": "p_fighter_open_implied",
-    }
-    for market in ["5D", "Bet365", "BetMGM", "BetRivers", "BetWay", 
-        "Caesars", "DraftKings", "FanDuel", "PointsBet", "Ref", "Unibet"]:
-        rename_dict[market + "_fighter"] = market + "_opponent"
-        rename_dict[market + "_opponent"] = market + "_fighter"
-    bfo_df2 = bfo_df.rename(columns=rename_dict)
-    bfo_duped_df = pd.concat([bfo_df, bfo_df2]).reset_index(drop=True)
-    return espn_df.merge(bfo_duped_df, 
-                         on=["fight_id", "Date", "FighterID", "OpponentID"], 
-                         how="left")
-
-
-def main():
-    espn_df = pd.read_csv("data/espn_data.csv").rename(columns={
-        "Name": "FighterName",
-        "Name_opp": "OpponentName",
-    })
-    for col in ["FighterID", "OpponentID"]:
-        espn_df[col] = espn_df[col].str.split("/").str[0]
-    ufc_df = pd.read_csv("data/ufc_stats_df.csv").rename(columns={
-        "FighterID_opp": "OpponentID",
-        "FighterName_opp": "OpponentName",
-    })
-    bfo_df = pd.read_csv("data/bfo_open_and_close_odds.csv")
-    for df in [espn_df, ufc_df, bfo_df]:
-        df["Date"] = pd.to_datetime(df["Date"])
-        for col in ["FighterName", "OpponentName"]:
-            df[col] = df[col].str.lower().str.strip()
-
-    # 2561001/bruno-carvalho didn't fight 2488370/eiji-mitsuoka on Jul 16, 2011
-    # that was a different bruno carvalho, who is already in the dataset
-    drop_pair = ("2561001", "2488370")
-    drop_fight = espn_df["FighterID"].isin(drop_pair) & espn_df["OpponentID"].isin(drop_pair)
-    espn_df_clean = espn_df.loc[~drop_fight]
-
-    # These espn IDs correspond to the same guy - they have to be merged
-    fighter_id_map = {
-        "2583704": "2613376",
-        # "2583704/luis-ramos": "2613376/luis-ramos",
-    }
-    espn_df_clean = espn_df_clean.assign(
-        FighterID=espn_df["FighterID"].replace(to_replace=fighter_id_map),
-        OpponentID=espn_df["OpponentID"].replace(to_replace=fighter_id_map),
-    )
+def find_ufc_espn_mapping():
+    print("loading espn data")
+    espn_df = load_espn_df()[[
+        "FighterID", "OpponentID", 
+        "Date", 
+        "OpponentName", "FighterName",
+    ]]
+    print("loading ufc data")
+    ufc_df = load_ufc_df()[[
+        "FighterID", "OpponentID", 
+        "Date", 
+        "OpponentName", "FighterName",
+    ]]
+    print("finding isomorphism")
     # find mapping btw ufc IDs and espn IDs
-    iso_finder = IsomorphismFinder(ufc_df, espn_df_clean, manual_ufc_espn_mapping)
-    iso_finder.find_isomorphism(n_iters=20)
-    
-    # okay great, now that we have the mapping, let's join ufc data and espn data
-    ufc_espn_df = join_ufc_and_espn(ufc_df, espn_df_clean, iso_finder.fighter_id_map)
-
-    # okay, let's proceed to join with bestfightodds data
-    # lots of redundant BFO pages
-    bfo_fighter_id_map = {
-        '/fighters/Shintaro-Ishiwatar-1151': '/fighters/Shintaro-Ishiwatari-7509',
-        '/fighters/Paddy-Holohan-2786': '/fighters/Patrick-Holohan-4991',
-        '/fighters/Robert-McDaniel-4064': '/fighters/Bubba-McDaniel-744',
-        '/fighters/Nicholas-Musoke-4199': '/fighters/Nico-Musoke-2144',
-        '/fighters/Marco-Polo-Reyes-6679': '/fighters/Polo-Reyes-5991',
-        '/fighters/Pingyuan-Liu-7732': '/fighters/Liu-Pingyuan-8739',
-        '/fighters/Luis-Luna-7785': '/fighters/Anselmo-Luis-Luna-Jr-4330',
-        '/fighters/Jung-Bu-Kyung-670': '/fighters/Bukyung-Jung-445',
-        '/fighters/Brianna-van-Buren-4076': '/fighters/Brianna-Fortino-13884',
-        '/fighters/J-J-Ambrose-12683': '/fighters/J-J-Ambrose-459',
-        '/fighters/Anthony-Waldburger-1564': '/fighters/T-J-Waldburger-2156',
-        '/fighters/Jadamba-Narantungalag-2028': '/fighters/Narantungalag-Jadambaa-6335', 
-    #     '/fighters/Narantungalag-Jadambaa-6335': '/fighters/Jadamba-Narantungalag-2028',
-        '/fighters/Raquel-Paaluhi-2813': '/fighters/Raquel-Pa-aluhi-5257',
-        '/fighters/Rodrigo-Cavalheiro-Correia-5516': '/fighters/Rodrigo-Cavalheiro-4743',
-        '/fighters/Jesse-Miele-5797': '/fighters/Jessy-Miele-8855',
-        '/fighters/Jp-Buys-12275': '/fighters/J-P-Buys-7455',
-        '/fighters/Levy-Marroquin-9617': '/fighters/Levy-Saul-Marroquin-7713',
-        '/fighters/Guilherme-Faria-8090': '/fighters/Guillerme-Faria-12163',
-        '/fighters/Gabriel-Green-6587': '/fighters/Gabe-Green-10506',
-        '/fighters/Philip-Rowe-9379': '/fighters/Phil-Rowe-9898',
-        '/fighters/Phillip-Rowe-11319': '/fighters/Phil-Rowe-9898',
-        '/fighters/Aleksandra-Albu-5539': '/fighters/Alexandra-Albu-7261',
-        '/fighters/Bazigit-Ataev-8579': '/fighters/Bozigit-Ataev-9050',
-        '/fighters/Khalil-Rountree-Jr-11552': '/fighters/Khalil-Rountree-4935',
-        '/fighters/Khalil-Rountree-Jr-13118': '/fighters/Khalil-Rountree-4935',
-        '/fighters/Sumudaerji-Sumudaerji-8746': '/fighters/Su-Mudaerji-9345',
-
-    }
-
-    bfo_df_clean = bfo_df.assign(
-        FighterID=bfo_df["FighterID"].replace(to_replace=bfo_fighter_id_map),
-        OpponentID=bfo_df["OpponentID"].replace(to_replace=bfo_fighter_id_map),
+    iso_finder = IsomorphismFinder(
+        df_aux=ufc_df, df_canon=espn_df, manual_map=MANUAL_UFC_ESPN_MAP
     )
-    # these fights didn't end up happening
-    drop_pairs = [
-        ('/fighters/Gabriel-Bonfim-11752', '/fighters/Carlos-Leal-Miranda-7744'),
-        ('/fighters/Gabriel-Bonfim-11752', '/fighters/Diego-Dias-11750'),
+    iso_finder.find_isomorphism(n_iters=20)
+
+    # write the mapping to the database. Joining ufc and espn data comes later
+    fighter_id_map_df = iso_finder.fighter_id_map.reset_index()\
+        .rename(columns={
+            "index": "FighterID_ufc",
+            0: "FighterID_espn",
+        })
+    base_db_interface.write_replace(
+        "ufc_to_espn_fighter_id_map",
+        fighter_id_map_df, 
+    )
+    # I want to find a mapping 
+    # (ufc_fighter_id, ufc_opponent_id, date) -> 
+    # (espn_fighter_id, espn_opponent_id, date)
+    # so that I can join ufc and espn data and get the orientation right
+    ufc_to_espn_map = ufc_df.assign(
+        FighterID_espn=ufc_df["FighterID"].map(iso_finder.fighter_id_map),
+        OpponentID_espn=ufc_df["OpponentID"].map(iso_finder.fighter_id_map),
+    ).rename(columns={
+        "FighterID": "FighterID_ufc",
+        "OpponentID": "OpponentID_ufc",
+    })[[
+        "FighterID_ufc", "OpponentID_ufc",
+        "FighterID_espn", "OpponentID_espn",
+        "Date",
+    ]]
+    # drop fights where we don't have a mapping
+    ufc_to_espn_map = ufc_to_espn_map.loc[
+        ufc_to_espn_map["FighterID_espn"].notnull() &
+        ufc_to_espn_map["OpponentID_espn"].notnull()
     ]
-    drop_inds = np.any([
-        bfo_df_clean["FighterID"].isin(drop_pair) & bfo_df_clean["OpponentID"].isin(drop_pair)
-        for drop_pair in drop_pairs
-    ], axis=0)
-    bfo_df_clean = bfo_df_clean.loc[~drop_inds]
+    # simple as that!
+    base_db_interface.write_replace(
+        "ufc_to_espn_map",
+        ufc_to_espn_map,
+    )
 
-    bfo_iso_finder = IsomorphismFinder(espn_df_clean, bfo_df_clean, manual_espn_bfo_mapping)
-    bfo_iso_finder.find_isomorphism(n_iters=20)
 
-    bfo_ufc_espn_df = join_espn_and_bfo(ufc_espn_df, bfo_df_clean, bfo_iso_finder.fighter_id_map)
-    print(bfo_ufc_espn_df.shape)
-    bfo_ufc_espn_df.to_csv("data/full_bfo_ufc_espn_data.csv", index=False)
-    return bfo_ufc_espn_df
+def find_bfo_ufc_mapping():
+    print("loading ufc data")
+    ufc_df = load_ufc_df()[[
+        "FighterID", "OpponentID", 
+        "Date", 
+        "OpponentName", "FighterName",
+    ]]
+    print("loading bfo data")
+    bfo_df = load_bfo_df()[[
+        "FighterID", "OpponentID", 
+        "Date", 
+        "OpponentName", "FighterName",
+    ]]
+    print("finding isomorphism")
+    # some pages in bestfightodds.com actually comprise data for multiple fighters,
+    # who happen to have the same name. EG
+    # joey gomez:
+    # https://www.bestfightodds.com/fighters/Joey-Gomez-6023
+    # http://ufcstats.com/fighter-details/0778f94eb5d588a5
+    # http://ufcstats.com/fighter-details/3a28e1e641366308
+    # So when we're trying to join BFO and UFC data, we temporarily merge the
+    # UFC IDs for these fighters into one, and then split them again later.
+    ufc_df["FighterID_pre_overwrite"] = ufc_df["FighterID"]
+    ufc_df["OpponentID_pre_overwrite"] = ufc_df["OpponentID"]
+    ufc_df["FighterID"] = ufc_df["FighterID"].replace(FALSE_OVERWRITE_UFC_MAP)
+    ufc_df["OpponentID"] = ufc_df["OpponentID"].replace(FALSE_OVERWRITE_UFC_MAP)
+    # find mapping btw bfo IDs and espn IDs
+    iso_finder = IsomorphismFinder(
+        df_aux=bfo_df, df_canon=ufc_df,
+        manual_map=MANUAL_BFO_UFC_MAP
+    )
+    iso_finder.find_isomorphism(n_iters=20)
+    # write the mapping to the database. Joining ufc and espn data comes later
+    fighter_id_map_df = iso_finder.fighter_id_map.reset_index()\
+        .rename(columns={
+            "index": "FighterID_bfo",
+            0: "FighterID_ufc",
+        })
+    base_db_interface.write_replace(
+        "bfo_to_ufc_fighter_id_map",
+        fighter_id_map_df, 
+    )
+    # I want to find a mapping
+    # (bfo_fighter_id, bfo_opponent_id, date) ->
+    # (ufc_fighter_id_pre_overwrite, ufc_opponent_id_pre_overwrite, date)
+    # so that I can join bfo and ufc data and get the orientation right
 
-if __name__ == "__main__":
-    main()
+    # use fighter_id_map to find the corresponding ufc FighterIDs (post overwrite)
+    bfo_to_ufc_map = bfo_df.assign(
+        FighterID_ufc=bfo_df["FighterID"].map(iso_finder.fighter_id_map),
+        OpponentID_ufc=bfo_df["OpponentID"].map(iso_finder.fighter_id_map),
+    ).rename(columns={
+        "FighterID": "FighterID_bfo",
+        "OpponentID": "OpponentID_bfo",
+    })[[
+        "FighterID_bfo", "OpponentID_bfo",
+        "FighterID_ufc", "OpponentID_ufc",
+        "Date",
+    ]]
+    # join with ufc_df to get the pre-overwrite FighterIDs
+    bfo_to_ufc_map = bfo_to_ufc_map.merge(
+        ufc_df[[
+            "FighterID", "OpponentID",
+            "FighterID_pre_overwrite", "OpponentID_pre_overwrite",
+            "Date",
+        ]].rename(columns={
+            "FighterID": "FighterID_ufc",
+            "OpponentID": "OpponentID_ufc",
+        }),
+        on=["FighterID_ufc", "OpponentID_ufc", "Date"],
+        how="inner", # inner join drops fights where we don't have a mapping
+    )
+    # drop the post-overwrite FighterIDs
+    bfo_to_ufc_map = bfo_to_ufc_map\
+        .drop(columns=["FighterID_ufc", "OpponentID_ufc"])\
+        .rename(columns={
+            "FighterID_pre_overwrite": "FighterID_ufc",
+            "OpponentID_pre_overwrite": "OpponentID_ufc",
+        })
+
+    base_db_interface.write_replace(
+        "bfo_to_ufc_map",
+        bfo_to_ufc_map,
+    )
+
+def join_bfo_espn_ufc(bfo_df, espn_df, ufc_df):
+    """
+    After we've found the mapping between BFO and UFC data, as well as 
+    the mapping between ESPN and UFC data, we can join the three datasets 
+    together. This is the final step before we start doing final feature 
+    engineering.
+    """
+    ufc_to_espn_map = base_db_interface.read("ufc_to_espn_map")
+    bfo_to_ufc_map = base_db_interface.read("bfo_to_ufc_map")
+    # join ufc and espn data
+    espn_df = espn_df.rename(columns={
+        "FighterID": "FighterID_espn",
+        "OpponentID": "OpponentID_espn",
+    })
+    ufc_df = ufc_df.rename(columns={
+        "FighterID": "FighterID_ufc",
+        "OpponentID": "OpponentID_ufc",
+    }).merge(
+        ufc_to_espn_map,
+        on=["FighterID_ufc", "OpponentID_ufc", "Date"],
+        how="inner",
+    )
+    historical_espn_ufc_df = espn_df.merge(
+        ufc_df,
+        on=["FighterID_espn", "OpponentID_espn", "Date"],
+        how="left",
+        suffixes=("","_ufc")
+    )
+    # don't forget about upcoming fights!
+    upcoming_espn_ufc_df = espn_df.merge(
+        ufc_df.query("is_upcoming == 1"),
+        on=["FighterID_espn", "OpponentID_espn", "Date"],
+        how="right",
+        suffixes=("","_ufc")
+    )
+    espn_ufc_df = pd.concat([
+        historical_espn_ufc_df,
+        upcoming_espn_ufc_df,
+    ]).sort_values("Date").reset_index(drop=True)
+    espn_ufc_df["is_upcoming"] = espn_ufc_df["is_upcoming"].fillna(0).astype(int)
+
+    # join bfo data
+    bfo_ufc_df = bfo_df.rename(columns={
+        "FighterID": "FighterID_bfo",
+        "OpponentID": "OpponentID_bfo",
+    }).merge(
+        bfo_to_ufc_map,
+        on=["FighterID_bfo", "OpponentID_bfo", "Date"],
+        how="inner",
+    )
+    bfo_espn_ufc_df = espn_ufc_df.merge(
+        bfo_ufc_df,
+        on=["FighterID_ufc", "OpponentID_ufc", "Date"],
+        how="left",
+        suffixes=("","_bfo")
+    )
+    # Make sure fight_id isn't missing. If not missing, this will 
+    # be a no-op. If missing, we'll fill it in. fight_id may be
+    # missing for upcoming fights.
+    bfo_espn_ufc_df["fight_id"] = get_fight_id(
+        bfo_espn_ufc_df["FighterID_espn"],
+        bfo_espn_ufc_df["OpponentID_espn"],
+        bfo_espn_ufc_df["Date"],
+    )
+
+    print("checking for duplicate fights")
+    print(bfo_espn_ufc_df["fight_id"].value_counts()[0:10])
+    print("bfo_espn_ufc.shape:", bfo_espn_ufc_df.shape)
+    print("bfo_espn_ufc_df.shape, with bfo and ufc:", 
+        bfo_espn_ufc_df.dropna(
+            subset=["FighterID_espn", "FighterID_ufc", "FighterID_bfo"]
+        ).shape)
+    print("writing joined_bfo_espn_ufc_data")
+    base_db_interface.write_replace(
+        "joined_bfo_espn_ufc_data",
+        bfo_espn_ufc_df,
+    )
+    return bfo_espn_ufc_df
+
+def final_clean_step():
+    """
+    Any last-minute cleaning steps that need to be done before feature engineering
+    Namely dropping fights with duplicated opening money lines (thankfully, not very
+    many of these cases)
+    """
+    joined_df = base_db_interface.read("joined_bfo_espn_ufc_data")
+    print("joined_df.shape before dropping duplicated opening money lines:", joined_df.shape)
+    joined_df["p_stats_null"] = joined_df.isnull().mean(axis=1)
+    joined_df = joined_df.sort_values("p_stats_null")\
+        .drop_duplicates(
+        subset=["FighterID_espn", "OpponentID_espn", "Date"],
+        keep="first",
+    ).drop(columns=["p_stats_null"])
+    print("joined_df.shape after dropping duplicated opening money lines:", joined_df.shape)
+    base_db_interface.write_replace(
+        "clean_bfo_espn_ufc_data",
+        joined_df,
+    )
