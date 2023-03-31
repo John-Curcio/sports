@@ -349,6 +349,80 @@ def load_bfo_df():
     bfo_df["OpponentID"] = bfo_df["OpponentID"].replace(to_replace, value)
     return bfo_df
 
+def load_the_historical_odds_df():
+    odds_df = base_db_interface.read("the_historical_odds_open_close")
+    dk_df = odds_df.query("bookmaker_name == 'DraftKings'").rename(columns={
+        "fighter_name": "FighterName",
+        "opponent_name": "OpponentName",
+    })
+    dk_df["FighterID"] = dk_df["FighterName"]
+    dk_df["OpponentID"] = dk_df["OpponentName"]
+    dk_df["Date"] = pd.to_datetime(pd.to_datetime(dk_df["commence_time"]).dt.date)
+    return dk_df
+
+def join_the_odds_espn():
+    print("loading espn data")
+    espn_df = load_espn_df()[[
+        "FighterID", "OpponentID",
+        "Date",
+        "OpponentName", "FighterName",
+    ]]
+    print("loading the-odds data")
+    the_odds_df = load_the_historical_odds_df()[[
+        "FighterID", "OpponentID",
+        "Date",
+        "OpponentName", "FighterName",
+    ]]
+    print("finding isomorphism")
+    # find mapping btw the-odds IDs and espn IDs
+    iso_finder = IsomorphismFinder(
+        df_aux=the_odds_df, df_canon=espn_df,
+        manual_map=MANUAL_THE_ODDS_ESPN_MAP,
+    )
+    iso_finder.find_isomorphism(n_iters=20)
+
+    # write the mapping to the database. Joining the-odds and espn data comes later
+    fighter_id_map_df = iso_finder.fighter_id_map.reset_index()\
+        .rename(columns={
+            "index": "FighterName_the_odds",
+            0: "FighterID_espn",
+        })
+    base_db_interface.write_replace(
+        "the_odds_espn_fighter_id_map",
+        fighter_id_map_df,
+    )
+    # join the-odds and espn data
+    the_odds_df = the_odds_df.merge(
+        fighter_id_map_df,
+        how="left",
+        left_on="FighterName",
+        right_on="FighterName_the_odds",
+    )
+    the_odds_df = the_odds_df.merge(
+        fighter_id_map_df,
+        how="left",
+        left_on="OpponentName",
+        right_on="FighterName_the_odds",
+        suffixes=("", "_opponent"),
+    )
+    the_odds_df = the_odds_df.drop(columns=[
+        # had to make these columns, which are really
+        # just aliases of FighterName and OpponentName,
+        # to get the IsomorphismFinder to work
+        "FighterID", "OpponentID",
+    ])
+    the_odds_df = the_odds_df.rename(columns={
+        "FighterID_espn": "FighterID",
+        "FighterID_espn_opponent": "OpponentID",
+        "FighterName_the_odds_opponent": "OpponentName_the_odds",
+    })
+    base_db_interface.write_replace(
+        "the_historical_odds_open_close_espn",
+        the_odds_df, 
+    )
+    return the_odds_df
+
+
 def find_ufc_espn_mapping():
     print("loading espn data")
     espn_df = load_espn_df()[[

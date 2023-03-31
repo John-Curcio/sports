@@ -265,3 +265,7 @@ MANUAL_BFO_ESPN_MAP = {
     # valentina shevchenko
     "Valentina-Shevchenko-5475": "2554705",
 }
+
+MANUAL_THE_ODDS_ESPN_MAP = {
+    "Austin Lingo": "4570669",
+}
