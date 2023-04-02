@@ -18,6 +18,13 @@ import time
 from scrape.base_scrape import BaseBfs
 from db import base_db_interface
 
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+driver = webdriver.Firefox()
+
 
 
 dt_now = str(pd.to_datetime('today').date())
@@ -150,6 +157,7 @@ class EventScraper(BaseBfoPageScraper):
         super().__init__(url, **request_kwargs)
         self.fighter_urls = None
         self.odds_df = None
+        self.prop_html = None
         
     def get_html(self):
         r = self.get_request()
@@ -184,7 +192,32 @@ class EventScraper(BaseBfoPageScraper):
         odds_df["FighterHref"] = pd.Series(fighter_urls).str[len("https://www.bestfightodds.com/fighters/"):]
         odds_df["EventHref"] = self.url[len("https://www.bestfightodds.com/events/"):]
         return odds_df
+    
+    def get_prop_html(self):
+        """
+        Get the html for the event, including the props
+        This will be dirty, meant to be parsed elsewhere
+        """
+        # Load the webpage
+        driver.get(self.url)
+        # Find the buttons to reveal the props, and click them
+        buttons = driver.find_elements_by_class_name("prop-cell prop-cell-exp")
+        # click every other button - adjacent ones are redundant, 
+        # and clicking the second one will only undo the first
+        for button in buttons[::1]:
+            button.click()
 
+        # Wait for the page to load
+        time.sleep(1)
+
+        # Get the html
+        html = driver.page_source
+        self.prop_html = html
+        return html
+
+
+                                 
+        
 # class FighterBFS(BaseBfs):
     
 #     def __init__(self, root_urls=None, max_depth=3, verbose=True):
@@ -305,14 +338,6 @@ class BfoOddsScraper(object):
     #         match_df.to_csv(path, index=False)
     #     return None
 
-    # def scrape_all_closing_odds(self, url_df=None):
-    #     if url_df is None:
-    #         url_df = pd.DataFrame(self.event_urls_seen, columns=["url"])
-    #     odds_df = self.get_event_odds(url_df["url"])
-    #     path = "scraped_data/mma/bfo/bfo_event_odds_{}.csv".format(dt_now)
-    #     odds_df.to_csv(path, index=False)
-    #     return None
-
     def get_event_odds(self, urls):
         odds_df_list = []
         for url in urls:
@@ -325,6 +350,25 @@ class BfoOddsScraper(object):
                 print("couldn't scrape odds from {}".format(url))
                 continue 
         return pd.concat(odds_df_list)
+    
+    def get_event_prop_html(self, urls):
+        """
+        returns a df with columns url and html
+        """
+        html_df_list = []
+        n = len(urls)
+        for i, url in enumerate(urls):
+            print("scraping prop html from {}, url {}/{}".format(url, i, n))
+            try:
+                scraper = EventScraper(url)
+                html = scraper.get_prop_html()
+                html_df_list.append(
+                    pd.read_html(html)[1].assign(url=url)
+                )
+            except:
+                print("couldn't scrape prop html from {}".format(url))
+                continue
+        return pd.concat(html_df_list)
 
     def get_fighter_odds(self, urls):
         # concat fighter odds dfs
@@ -358,6 +402,27 @@ class BfoOddsScraper(object):
             df=match_df,
         )
         return match_df
+    
+    def scrape_and_write_closing_odds(self, url_df=None):
+        if url_df is None:
+            url_df = pd.DataFrame(self.event_urls_seen, columns=["url"])
+        odds_df = self.get_event_odds(url_df["url"])
+        print("writing {} rows to db".format(len(odds_df)))
+        base_db_interface.write_replace(
+            table_name="bfo_event_odds",
+            df=odds_df,
+        )
+
+    def scrape_and_write_prop_html(self, url_df=None):
+        if url_df is None:
+            url_df = pd.DataFrame(self.event_urls_seen, columns=["url"])
+        html_df = self.get_event_prop_html(url_df["url"])
+        print("writing {} rows to db".format(len(html_df)))
+        base_db_interface.write_replace(
+            table_name="bfo_event_prop_html",
+            df=html_df,
+        )
+
 
 
 def main():
@@ -366,5 +431,7 @@ def main():
     bfo = BfoOddsScraper(max_iters=max_iters)
     bfo.scrape_and_write_all_fighter_urls()
     bfo.scrape_and_write_opening_odds()
+    bfo.scrape_and_write_prop_html()
+    bfo.scrape_and_write_closing_odds()
     print("done!")
     
