@@ -214,6 +214,22 @@ class EventScraper(BaseBfoPageScraper):
         html = driver.page_source
         self.prop_html = html
         return html
+    
+    def get_prop_table(self):
+        """
+        Get the table of props
+        """
+        if self.prop_html is None:
+            self.get_prop_html()
+        prop_table = pd.read_html(self.prop_html)[1]\
+            .assign(url=self.url)\
+            .rename(columns={"Unnamed: 0": "title"})
+        prop_soup = BeautifulSoup(self.prop_html, "lxml")
+        # add FighterHref if it's a fighter row
+        fighter_hrefs = prop_soup.find("tbody").find_all("a", href=True)
+        href_dict = {a.text: a.get("href") for a in fighter_hrefs}
+        prop_table["FighterHref"] = prop_table["title"].map(href_dict)
+        return prop_table
 
 
                                  
@@ -310,7 +326,7 @@ class BfoOddsScraper(object):
             "https://www.bestfightodds.com/fighters/Julianna-Pena-1816",
         ]
 
-    def scrape_and_write_all_fighter_urls(self):
+    def scrape_and_write_all_urls(self):
         root_urls = self.get_root_urls()
         for root_url in root_urls:
             bfs = FighterBFS(root_url, max_iters=self.max_iters)
@@ -323,6 +339,18 @@ class BfoOddsScraper(object):
         base_db_interface.write_replace(
             table_name="bfo_fighter_urls",
             df=url_df,
+        )
+        base_db_interface.write_replace(
+            table_name="bfo_event_urls",
+            df=pd.DataFrame(self.event_urls_seen, columns=["url"]),
+        )
+        base_db_interface.write_replace(
+            table_name="bfo_failed_fighter_urls",
+            df=pd.DataFrame(self.failed_fighter_urls, columns=["url"]),
+        )
+        base_db_interface.write_replace(
+            table_name="bfo_failed_event_urls",
+            df=pd.DataFrame(self.failed_event_urls, columns=["url"]),
         )
         return None
 
@@ -361,10 +389,7 @@ class BfoOddsScraper(object):
             print("scraping prop html from {}, url {}/{}".format(url, i, n))
             try:
                 scraper = EventScraper(url)
-                html = scraper.get_prop_html()
-                html_df_list.append(
-                    pd.read_html(html)[1].assign(url=url)
-                )
+                html_df_list.append(scraper.get_prop_table())
             except:
                 print("couldn't scrape prop html from {}".format(url))
                 continue
@@ -429,9 +454,17 @@ def main():
     # max_iters = 2
     max_iters = np.inf
     bfo = BfoOddsScraper(max_iters=max_iters)
-    bfo.scrape_and_write_all_fighter_urls()
-    bfo.scrape_and_write_opening_odds()
+    bfo.scrape_and_write_all_urls()
+    # bfo.scrape_and_write_opening_odds()
     bfo.scrape_and_write_prop_html()
-    bfo.scrape_and_write_closing_odds()
+    # bfo.scrape_and_write_closing_odds()
     print("done!")
     
+def just_scrape_props():
+    # get urls of all events
+    url_df = base_db_interface.read("bfo_event_urls")
+    print("{} events".format(len(url_df)))
+    # get html of all prop tables
+    bfo = BfoOddsScraper()
+    bfo.event_urls_seen = url_df["url"].tolist()
+    bfo.scrape_and_write_prop_html()

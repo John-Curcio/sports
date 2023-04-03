@@ -90,35 +90,6 @@ class SherdogSearchScraper(object):
         # leave the connection open; this base_db_interface will be used by 
         # other classes
         return
-
-
-# class SherdogArticleScraper(BasePageScraper):
-#     """
-#     Scrapes a given URL for article html
-#     """
-    
-#     def get_page_data(self):
-#         """
-#         Gets HTML for a given URL. Makes no attempt to parse the HTML.
-#         """
-#         soup = self.get_soup()
-#         self.title = soup.find('div', class_="section_title")
-#         self.article_info = soup.find('div', class_="article-info")
-#         # example of article_info:
-#         #<div class="article-info">
-#         # <div>
-#         # <a href="/authors/Jay-Pettry-1657">Jay Pettry</a> <span>Feb 18, 2023</span> <a class="comments" href="#insticator-commenting">Comments</a> </div>
-#         # </div>
-#         try:
-#             self.author = self.article_info.find('a').text
-#         except AttributeError:
-#             self.author = "missing"
-#         try:
-#             self.date = self.article_info.find('span').text
-#         except AttributeError:
-#             self.date = "missing"
-#         self.body = soup.find('div', class_="content body_content")
-#         return
     
 def _scrape_single_article(url):
     scraper = BasePageScraper(url)

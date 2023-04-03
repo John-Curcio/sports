@@ -1,8 +1,109 @@
 import pandas as pd
 import numpy as np
+from tqdm import tqdm
+from db import base_db_interface
+
+class BfoDataCleaner(object):
+
+    def __init__(self):
+        self.bfo_fighter_odds_df = base_db_interface.read("bfo_fighter_odds")
+        self.bfo_event_odds_df = base_db_interface.read("bfo_event_odds")
+
+        event_prop_html_df = base_db_interface.read("bfo_event_prop_html")
+        prop_df = event_prop_html_df.rename(columns={
+            "Unnamed: 0": "title",
+        })
+        prop_df["title_lower"] = prop_df["title"].str.lower()
+        prop_df["EventHref"] = prop_df["url"].str[len("https://www.bestfightodds.com"):]
+        self.bfo_prop_odds_raw_df = prop_df
+
+        self.clean_close_df = None
+        self.clean_fighter_odds_df = None 
+        self.clean_fight_prop_df = None
+        self.clean_event_prop_df = None
+
+    def parse_prop_bfo(self):
+        """
+        Cleans all prop bets scraped from bestfightodds.com. Example pages:
+        https://www.bestfightodds.com/events/ufc-285-2738
+        https://www.bestfightodds.com/events/pfl-europe-week-1-2836
+        https://www.bestfightodds.com/events/ufc-285-2738
+
+        Returns:
+            clean_event_prop_df: pd.DataFrame
+                Dataframe with one row per event prop bet
+            clean_fight_prop_df: pd.DataFrame
+                Dataframe with one row per fight prop bet
+        """
+        prop_df = self.bfo_prop_odds_raw_df
+
+        clean_fight_prop_rows = []
+        clean_event_prop_rows = []
+        for event_href, event_df in tqdm(prop_df.groupby("EventHref")):
+            # get props for overall event
+            event_prop_header = event_df["title_lower"] == "event props"
+            if event_prop_header.any():
+                event_prop_header_ind = event_df.index[event_prop_header][0]
+                event_prop_df = event_df.loc[event_prop_header_ind+1:]
+            else:
+                event_prop_header_ind = event_df.index.max() + 1
+                event_prop_df = pd.DataFrame(columns=event_df.columns)
+            clean_event_prop_rows.append(event_prop_df)
+
+            # get props for each fight
+            event_fights_df = event_df.loc[:(event_prop_header_ind-1)]
+            is_fighter = event_fights_df["FighterHref"].notnull()
+            # pairs of fighters will have the same event_fight_id, and so 
+            # will all following rows until the next pair of fighters
+            # is encountered
+            event_fight_id = (is_fighter.cumsum() + 1) // 2
+            event_fights_df = event_fights_df.assign(event_fight_id=event_fight_id)
+
+            fighter_href = event_fights_df\
+                .groupby("event_fight_id")["FighterHref"]\
+                .transform("first")
+            opponent_href = event_fights_df\
+                .groupby("event_fight_id")["FighterHref"]\
+                .transform("last")
+            
+            n_props = event_fights_df\
+                .groupby("event_fight_id")["Props.1"]\
+                .transform("max")
+
+            fight_prop_df = event_fights_df.loc[event_fights_df["FighterHref"].isnull()]
+            if fight_prop_df.shape[0] > 0:
+                fight_prop_df = fight_prop_df.assign(
+                    FighterHref=fighter_href,
+                    OpponentHref=opponent_href,
+                    n_props=n_props,
+                )
+                clean_fight_prop_rows.append(fight_prop_df)
+            else:
+                # if there are no props for any fights, then we don't need to
+                # add anything to clean_fight_prop_rows. On to the next event.
+                continue
+
+        clean_event_prop_df = pd.concat(clean_event_prop_rows)\
+            .drop(columns=["FighterHref", "Props.1", "Props.2", "Props"])\
+            .reset_index(drop=True)
+        clean_fight_prop_df = pd.concat(clean_fight_prop_rows)\
+            .drop(columns=["Props.1", "Props.2", "Props"])\
+            .reset_index(drop=True)
+
+        self.clean_event_prop_df = clean_event_prop_df
+        self.clean_fight_prop_df = clean_fight_prop_df
+        return (clean_event_prop_df, clean_fight_prop_df)
+
+    def parse_all(self):
+        self.clean_close_df = clean_event_bfo(self.bfo_event_odds_df)
+        self.clean_fighter_odds_df = clean_fighter_bfo(self.bfo_fighter_odds_df)
+        self.parse_prop_bfo()
 
 def parse_american_odds(x:pd.Series):
-    x = x.astype(float)
+    """
+    Converts American odds to implied probabilities
+    """
+    x = x.str.replace("▼", "").str.replace("▲", "").astype(float)
     fav_inds = x <= 0
     dog_inds = x > 0
     y = pd.Series(0, index=x.index)
@@ -14,10 +115,10 @@ def clean_event_bfo(event_df):
     event_df = event_df.drop(columns=[
         'Props', 'Props.1', 'Props.2', 'table_id',
     ])
-    for col in "DraftKings	BetMGM	Caesars	BetRivers	FanDuel	PointsBet	\
-            Unibet	BetWay	5D	Ref Bet365".split():
-        event_df[col] = event_df[col].str.replace("▼", "").str.replace("▲", "").astype(float)
-        # event_df[col] = parse_american_odds(event_df[col])
+    # for col in "DraftKings	BetMGM	Caesars	BetRivers	FanDuel	PointsBet	\
+    #         Unibet	BetWay	5D	Ref Bet365".split():
+    #     event_df[col] = event_df[col].str.replace("▼", "").str.replace("▲", "").astype(float)
+    #     # event_df[col] = parse_american_odds(event_df[col])
     
     fighter_df = event_df.groupby(["match_id", "EventHref"]).first().reset_index()
     opponent_df = event_df.groupby(["match_id", "EventHref"]).last().reset_index()
@@ -37,6 +138,7 @@ def clean_event_bfo(event_df):
     close_df["OpponentID"] = close_df["OpponentID"]
     close_df["EventHref"] = "/events/" + close_df["EventHref"]
     return close_df
+
 
 def clean_fighter_bfo(bfo_df):
     """

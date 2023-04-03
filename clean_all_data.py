@@ -1,5 +1,5 @@
 import pandas as pd
-from wrangle.clean_bfo_data import clean_fighter_bfo #clean_all_bfo 
+from wrangle.clean_bfo_data import clean_fighter_bfo, BfoDataCleaner #clean_all_bfo 
 from wrangle.clean_espn_data import EspnDataCleaner
 from wrangle.clean_ufc_stats_data import UfcDataCleaner
 from wrangle import join_datasets
@@ -25,11 +25,23 @@ def clean_all():
     )
 
     print("--- clean bestfightodds data ---")
-    bfo_fighter_odds_df = base_db_interface.read("bfo_fighter_odds")
-    bfo_df = clean_fighter_bfo(bfo_fighter_odds_df)
+    bfo_dc = BfoDataCleaner()
+    bfo_dc.parse_all()
     base_db_interface.write_replace(
-        table_name="clean_bfo_data",
-        df=bfo_df
+        table_name="clean_fighter_odds_data",
+        df=bfo_dc.clean_fighter_odds_df
+    )
+    base_db_interface.write_replace(
+        table_name="clean_bfo_close_data",
+        df=bfo_dc.clean_close_df
+    )
+    base_db_interface.write_replace(
+        table_name="clean_event_prop_data",
+        df=bfo_dc.clean_event_prop_df
+    )
+    base_db_interface.write_replace(
+        table_name="clean_fight_prop_data",
+        df=bfo_dc.clean_fight_prop_df
     )
 
     print("--- find mapping ufcstats --> espn ---")
@@ -38,7 +50,7 @@ def clean_all():
     join_datasets.find_bfo_ufc_mapping()
 
     print("--- join bfo, espn, and ufc cleaned datasets ---")
-    bfo_df = base_db_interface.read("clean_bfo_data")
+    bfo_df = base_db_interface.read("clean_fighter_odds_data")
     espn_df = base_db_interface.read("clean_espn_data")
     ufc_df = base_db_interface.read("clean_ufc_data")
     join_datasets.join_bfo_espn_ufc(bfo_df, espn_df, ufc_df)
