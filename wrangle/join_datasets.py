@@ -644,6 +644,79 @@ def join_bfo_espn_ufc(bfo_df, espn_df, ufc_df):
     )
     return bfo_espn_ufc_df
 
+
+def find_bfo_espn_maping():
+    bfo_df = load_bfo_df().dropna(subset=[
+        # fat lot of good a row will do if it doesn't have IDs or odds
+        "FighterID", "OpponentID",
+        "FighterOpen", "OpponentOpen",
+        "Date",
+    ])[[
+        "FighterID", "OpponentID", 
+        "Date", 
+        "OpponentName", "FighterName",
+    ]]
+    espn_df = load_espn_df()[[
+        "FighterID", "OpponentID", 
+        "Date", 
+        "OpponentName", "FighterName",
+    ]]
+    # some pages in bestfightodds.com actually comprise data for multiple fighters,
+    # who happen to have the same name. 
+    # So when we're trying to join BFO and ESPN data, we temporarily merge the
+    # ESPN IDs for these fighters into one, and then split them again later.
+    temp_espn_df = espn_df.copy()
+    temp_espn_df["FighterID_pre_overwrite"] = temp_espn_df["FighterID"]
+    temp_espn_df["OpponentID_pre_overwrite"] = temp_espn_df["OpponentID"]
+    temp_espn_df["FighterID"] = temp_espn_df["FighterID"].replace(FALSE_OVERWRITE_ESPN_MAP)
+    temp_espn_df["OpponentID"] = temp_espn_df["OpponentID"].replace(FALSE_OVERWRITE_ESPN_MAP)
+
+    iso_finder = IsomorphismFinder(
+        df_aux=bfo_df, df_canon=temp_espn_df,
+        manual_map=MANUAL_BFO_ESPN_MAP,
+    )
+
+    iso_finder.find_isomorphism(n_iters=20)
+
+    # use fighter_id_map to find the corresponding ESPN FighterIDs (post overwrite)
+    bfo_to_espn_map = bfo_df.assign(
+        FighterID_espn=bfo_df["FighterID"].map(iso_finder.fighter_id_map),
+        OpponentID_espn=bfo_df["OpponentID"].map(iso_finder.fighter_id_map),
+    ).rename(columns={
+        "FighterID": "FighterID_bfo",
+        "OpponentID": "OpponentID_bfo",
+    })[[
+        "FighterID_bfo", "OpponentID_bfo",
+        "FighterID_espn", "OpponentID_espn",
+        "Date",
+    ]]
+
+    # join with espn_df to get the pre-overwrite FighterIDs
+    bfo_to_espn_map = bfo_to_espn_map.merge(
+        temp_espn_df[[
+            "FighterID", "OpponentID",
+            "FighterID_pre_overwrite", "OpponentID_pre_overwrite",
+            "Date",
+        ]].rename(columns={
+            "FighterID": "FighterID_espn",
+            "OpponentID": "OpponentID_espn",
+        }),
+        on=["FighterID_espn", "OpponentID_espn", "Date"],
+        how="inner", # inner join drops fights where we don't have a mapping
+    )
+    # drop the post-overwrite FighterIDs
+    bfo_to_espn_map = bfo_to_espn_map\
+        .drop(columns=["FighterID_espn", "OpponentID_espn"])\
+        .rename(columns={
+            "FighterID_pre_overwrite": "FighterID_espn",
+            "OpponentID_pre_overwrite": "OpponentID_espn",
+        })
+
+    base_db_interface.write_replace(
+        "bfo_to_espn_map",
+        bfo_to_espn_map,
+    )
+
 def final_clean_step():
     """
     Any last-minute cleaning steps that need to be done before feature engineering

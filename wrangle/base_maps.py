@@ -164,6 +164,40 @@ FALSE_OVERWRITE_UFC_MAP = {
     "12ebd7d157e91701": "294aa73dbf37d281",
 }
 
+FALSE_OVERWRITE_ESPN_MAP = {
+    # some pages in bestfightodds.com actually comprise data for multiple fighters,
+    # who happen to have the same name. 
+    # So when we're trying to join BFO and ESPN data, we temporarily merge the
+    # ESPN IDs for these fighters into one, and then split them again later.
+# https://www.bestfightodds.com/fighters/Alex-Schoenauer-335
+    '2951428': '2335745',
+# https://www.bestfightodds.com/fighters/Bruno-Carvalho-2451
+    '3104455': '2561001',
+# https://www.bestfightodds.com/fighters/Bruno-Silva-7121
+    '4333158': '3895544',
+# https://www.bestfightodds.com/fighters/Elias-Garcia-4042
+    '3111338': '3028421',
+# https://www.bestfightodds.com/fighters/Elijah-Harris-9867
+    '4455612': '5119542',
+# https://www.bestfightodds.com/fighters/Joey-Gomez-6023
+    '4357555': '3947131',
+# https://www.bestfightodds.com/fighters/Jordan-Johnson-3341
+    '3082396': '4070161',
+# https://www.bestfightodds.com/fighters/Magomed-Idrisov-7339
+    '5126239': '4011477',
+# https://www.bestfightodds.com/fighters/Michael-Graves-5242
+    '4342232': '3890654',
+# https://www.bestfightodds.com/fighters/Rafael-Dias-527
+    '4325203': '2554931',
+# https://www.bestfightodds.com/fighters/Rafael-Silva-4257
+    '2511421': '2957832',
+# https://www.bestfightodds.com/fighters/Steve-Garcia-2576
+    '4237933': '3023804',
+# https://www.bestfightodds.com/fighters/Thiago-Santos-2526
+    '2559760': '3045798',
+    '4710380': '3045798',
+}
+
 MANUAL_BFO_UFC_MAP = {
     ### current top ranked in each weight class
     # deiveson figueiredo
@@ -264,6 +298,22 @@ MANUAL_BFO_ESPN_MAP = {
     "Weili-Zhang-7955": "4350762",
     # valentina shevchenko
     "Valentina-Shevchenko-5475": "2554705",
+    ####### resolving conflicts ########
+    "Thiago-Santos-2526": "3045798",
+
+    "Brett-Bergmark-1973": "2504260",
+    
+    "Carlos-Leal-Miranda-7744": "3146349", # (most similar to "carlos leal")
+    "Rodolfo-Marques-2711": "2578777", # (most similar to "rodolfo marques diniz")
+    "Teodoras-Aukstulis-6120": "3955016", # (most similar to "teodoras aukstuolis")
+    "Kevin-Morerya-7709": "4393564", # (most similar to "kevin moreyra")
+    "Mikey-Erosa-7707": "3083639", # (most similar to "mike erosa")
+    "Sunna-Rannveig-Davidsdottir-9086": "4048393", # (most similar to "sunna davidsdottir")
+    "Diana-Belbirr-13003": "3977987", # (most similar to "diana belbita")
+
+    "Diego-Dias-11750": "4916590", # (most similar to "diego dias")
+
+    "Robson-Junior-11403": "4917065",
 }
 
 MANUAL_THE_ODDS_ESPN_MAP = {
