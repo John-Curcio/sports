@@ -1,3 +1,15 @@
+"""
+This module contains classes for generating elo-score features from
+MMA data. Provides handy wrappers around the RealEloEstimator,
+BinaryEloEstimator, etc classes.
+
+To use for training and validation, instantiate a wrapper class, 
+then call fit_transform_all() to generate elo features.
+To use for training and out-of-sample prediction, instantiate a wrapper 
+class, then call fit_predict() to generate elo features for both 
+train and test.
+"""
+
 # import numpy as np 
 import pandas as pd 
 from model.mma_elo_model import RealEloEstimator, BinaryEloEstimator, AccEloEstimator
