@@ -567,13 +567,14 @@ def find_bfo_ufc_mapping():
 
 def join_bfo_espn_ufc(bfo_df, espn_df, ufc_df):
     """
-    After we've found the mapping between BFO and UFC data, as well as 
+    After we've found the mapping between BFO and ESPN data, as well as 
     the mapping between ESPN and UFC data, we can join the three datasets 
     together. This is the final step before we start doing final feature 
     engineering.
     """
     ufc_to_espn_map = base_db_interface.read("ufc_to_espn_map")
-    bfo_to_ufc_map = base_db_interface.read("bfo_to_ufc_map")
+    bfo_to_espn_map = base_db_interface.read("bfo_to_espn_map")
+
     # join ufc and espn data
     espn_df = espn_df.rename(columns={
         "FighterID": "FighterID_espn",
@@ -606,18 +607,18 @@ def join_bfo_espn_ufc(bfo_df, espn_df, ufc_df):
     ]).sort_values("Date").reset_index(drop=True)
     espn_ufc_df["is_upcoming"] = espn_ufc_df["is_upcoming"].fillna(0).astype(int)
 
-    # join bfo data
-    bfo_ufc_df = bfo_df.rename(columns={
+    # join bfo data with espn_ufc_df
+    bfo_espn_df = bfo_df.rename(columns={
         "FighterID": "FighterID_bfo",
         "OpponentID": "OpponentID_bfo",
     }).merge(
-        bfo_to_ufc_map,
+        bfo_to_espn_map,
         on=["FighterID_bfo", "OpponentID_bfo", "Date"],
         how="inner",
     )
     bfo_espn_ufc_df = espn_ufc_df.merge(
-        bfo_ufc_df,
-        on=["FighterID_ufc", "OpponentID_ufc", "Date"],
+        bfo_espn_df,
+        on=["FighterID_espn", "OpponentID_espn", "Date"],
         how="left",
         suffixes=("","_bfo")
     )
@@ -645,7 +646,7 @@ def join_bfo_espn_ufc(bfo_df, espn_df, ufc_df):
     return bfo_espn_ufc_df
 
 
-def find_bfo_espn_maping():
+def find_bfo_espn_mapping():
     bfo_df = load_bfo_df().dropna(subset=[
         # fat lot of good a row will do if it doesn't have IDs or odds
         "FighterID", "OpponentID",

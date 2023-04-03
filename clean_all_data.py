@@ -8,46 +8,48 @@ from db import base_db_interface
 
 
 def clean_all():
-    print("--- clean ufcstats data ---")
-    ufc_dc = UfcDataCleaner()
-    ufc_dc.parse_all()
-    base_db_interface.write_replace(
-        table_name="clean_ufc_data", 
-        df=ufc_dc.ufc_df
-    )
+    # print("--- clean ufcstats data ---")
+    # ufc_dc = UfcDataCleaner()
+    # ufc_dc.parse_all()
+    # base_db_interface.write_replace(
+    #     table_name="clean_ufc_data", 
+    #     df=ufc_dc.ufc_df
+    # )
 
-    print("--- clean espn data ---")
-    espn_dc = EspnDataCleaner()
-    espn_dc.parse_all()
-    base_db_interface.write_replace(
-        table_name="clean_espn_data",
-        df=espn_dc.espn_df
-    )
+    # print("--- clean espn data ---")
+    # espn_dc = EspnDataCleaner()
+    # espn_dc.parse_all()
+    # base_db_interface.write_replace(
+    #     table_name="clean_espn_data",
+    #     df=espn_dc.espn_df
+    # )
 
-    print("--- clean bestfightodds data ---")
-    bfo_dc = BfoDataCleaner()
-    bfo_dc.parse_all()
-    base_db_interface.write_replace(
-        table_name="clean_fighter_odds_data",
-        df=bfo_dc.clean_fighter_odds_df
-    )
-    base_db_interface.write_replace(
-        table_name="clean_bfo_close_data",
-        df=bfo_dc.clean_close_df
-    )
-    base_db_interface.write_replace(
-        table_name="clean_event_prop_data",
-        df=bfo_dc.clean_event_prop_df
-    )
-    base_db_interface.write_replace(
-        table_name="clean_fight_prop_data",
-        df=bfo_dc.clean_fight_prop_df
-    )
+    # print("--- clean bestfightodds data ---")
+    # bfo_dc = BfoDataCleaner()
+    # bfo_dc.parse_all()
+    # base_db_interface.write_replace(
+    #     table_name="clean_fighter_odds_data",
+    #     df=bfo_dc.clean_fighter_odds_df
+    # )
+    # base_db_interface.write_replace(
+    #     table_name="clean_bfo_close_data",
+    #     df=bfo_dc.clean_close_df
+    # )
+    # base_db_interface.write_replace(
+    #     table_name="clean_event_prop_data",
+    #     df=bfo_dc.clean_event_prop_df
+    # )
+    # base_db_interface.write_replace(
+    #     table_name="clean_fight_prop_data",
+    #     df=bfo_dc.clean_fight_prop_df
+    # )
 
     print("--- find mapping ufcstats --> espn ---")
     join_datasets.find_ufc_espn_mapping()
-    print("--- find mapping bfo --> ufc ---")
-    join_datasets.find_bfo_ufc_mapping()
+    # print("--- find mapping bfo --> ufc ---")
+    # join_datasets.find_bfo_ufc_mapping()
+    print("--- find mapping bfo --> espn ---")
+    join_datasets.find_bfo_espn_mapping()
 
     print("--- join bfo, espn, and ufc cleaned datasets ---")
     bfo_df = base_db_interface.read("clean_fighter_odds_data")
