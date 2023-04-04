@@ -10,10 +10,12 @@ def get_fight_id(fighter_id, opponent_id, date):
     * opponent_id
     * date
     """
-    max_id = np.maximum(fighter_id.fillna("unknown"), 
-                        opponent_id.fillna("unknown"))
-    min_id = np.minimum(fighter_id.fillna("unknown"),
-                        opponent_id.fillna("unknown"))
+    if fighter_id.isnull().any():
+        fighter_id = fighter_id.fillna("unknown")
+    if opponent_id.isnull().any():
+        opponent_id = opponent_id.fillna("unknown")
+    max_id = np.maximum(fighter_id, opponent_id)
+    min_id = np.minimum(fighter_id, opponent_id)
     date = pd.to_datetime(date).dt.date
     return date.astype(str) + "_" + min_id + "_" + max_id
 

@@ -106,7 +106,7 @@ def parse_american_odds(x:pd.Series):
     x = x.str.replace("▼", "").str.replace("▲", "").astype(float)
     fav_inds = x <= 0
     dog_inds = x > 0
-    y = pd.Series(0, index=x.index)
+    y = pd.Series(np.nan, index=x.index)
     y.loc[fav_inds] = -1 * x / (100 - x)
     y.loc[dog_inds] = 100 / (100 + x)
     return y
