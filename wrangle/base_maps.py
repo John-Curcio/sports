@@ -318,4 +318,24 @@ MANUAL_BFO_ESPN_MAP = {
 
 MANUAL_THE_ODDS_ESPN_MAP = {
     "Austin Lingo": "4570669",
+    "Da Un Jung": "4389252",
+    "Leon Edwards": "3152929",
+    "Weili Zhang": "4350762",
+    "Marlon Vera": "3155424",
+    "Holly Holm": "3028404",
+    "Patrick Downey": "4913863",
+    "Juliana Miller": "4912582",
+
+    "Rick Glenn": "3030256",
+    "Sergey Pavlovich": "4217395",
+    "Shamil Abdurahimov": "2558062",
+    "Abusupyian Magomedov": "3077822",
+    "Carlos Diego Ferreira": "3026133",
+    "Maxim Grishin": "2558492",
+
+    "Zarah Fairn Dos Santos": "4078218",
+    "Orion Cosce": "4687126",
+
+    "Deiveson Figueiredo": "4189320",
+    "Amanda Nunes": "2516131",
 }
