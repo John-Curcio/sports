@@ -353,6 +353,21 @@ class BfoOddsScraper(object):
             df=pd.DataFrame(self.failed_event_urls, columns=["url"]),
         )
         return None
+    
+    def load_urls(self):
+        self.fighter_urls_seen = set(
+            base_db_interface.read("bfo_fighter_urls")["url"]
+        )
+        self.event_urls_seen = set(
+            base_db_interface.read("bfo_event_urls")["url"]
+        )
+        self.failed_fighter_urls = set(
+            base_db_interface.read("bfo_failed_fighter_urls")["url"]
+        )
+        self.failed_event_urls = set(
+            base_db_interface.read("bfo_failed_event_urls")["url"]
+        )
+        return None
 
     # def scrape_all_opening_odds(self, url_df=None):
     #     if url_df is None:
@@ -455,9 +470,10 @@ def main():
     max_iters = np.inf
     bfo = BfoOddsScraper(max_iters=max_iters)
     bfo.scrape_and_write_all_urls()
-    # bfo.scrape_and_write_opening_odds()
+    # bfo.load_urls()
+    bfo.scrape_and_write_opening_odds()
     bfo.scrape_and_write_prop_html()
-    # bfo.scrape_and_write_closing_odds()
+    bfo.scrape_and_write_closing_odds()
     print("done!")
     
 def just_scrape_props():
