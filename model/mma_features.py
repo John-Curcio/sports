@@ -8,6 +8,20 @@ then call fit_transform_all() to generate elo features.
 To use for training and out-of-sample prediction, instantiate a wrapper 
 class, then call fit_predict() to generate elo features for both 
 train and test.
+
+Example:
+    # For training and validation
+    elo_wrapper = RealEloWrapper(elo_alphas={"targetWin": 0.5, "targetKO": 0.5})
+    elo_feat_df = elo_wrapper.fit_transform_all(train_df)
+    # For training and out-of-sample prediction
+    elo_wrapper = RealEloWrapper(elo_alphas={"targetWin": 0.5, "targetKO": 0.5})
+    elo_feat_df = elo_wrapper.fit_predict(train_df, test_df)
+
+Notes:
+    - The fit_*() methods don't assume that the data is "doubled" - i.e.
+    that each fight is represented twice, once for each (Fighter, Opponent) 
+    permutation. So in methods like fit_transform_all(), the data is 
+    deduped, then in _fit_transform(), the data is doubled! Very silly.
 """
 
 # import numpy as np 
@@ -26,6 +40,7 @@ class RealEloWrapper(object):
         
     def fit_transform_all(self, df):
         elo_feature_list = []
+        df = df.drop_duplicates(subset=["fight_id"])
         elo_feat_df = df[["fight_id"]].copy()
         for target_col, alpha in self.elo_alphas.items():
             print(f"getting elo features for {target_col}")
@@ -58,6 +73,7 @@ class BinaryEloWrapper(object):
         
     def fit_transform_all(self, df):
         elo_feature_list = []
+        df = df.drop_duplicates(subset=["fight_id"])
         elo_feat_df = df[["fight_id"]].copy()
         for target_col, alpha in self.elo_alphas.items():
             print(f"getting elo features for {target_col}")
@@ -96,6 +112,7 @@ class PcaEloWrapper(object):
         self.elo_wrapper = RealEloWrapper(self.elo_alphas)
         
     def _fit_transform_pca(self, df):
+        df = df.drop_duplicates(subset=["fight_id"])
         # okay first we double the df (targets had better be centered at 0 or we have a problem)
         df_sub = df.dropna(subset=self.target_cols)
         temp_pca_train_data = pd.concat([df_sub[self.target_cols], 
@@ -126,6 +143,7 @@ class PcaEloWrapper(object):
         return pca_df
         
     def fit_transform_all(self, df):
+        df = df.drop_duplicates(subset=["fight_id"])
         pca_df = self._fit_transform_pca(df)
         pca_df = df[["fight_id", "FighterID_espn", "OpponentID_espn"]].merge(
             pca_df, how="left", on=["fight_id", "FighterID_espn", "OpponentID_espn"],
@@ -133,6 +151,8 @@ class PcaEloWrapper(object):
         return self.elo_wrapper.fit_transform_all(pca_df)
 
     def fit_predict(self, train_df, test_df):
+        train_df = train_df.drop_duplicates(subset=["fight_id"])
+        # don't have to drop duplicates for test_df because we're not fitting anything
         train_pca_df = self._fit_transform_pca(train_df)
         train_pca_df = train_df[["fight_id", "FighterID_espn", "OpponentID_espn"]].merge(
             train_pca_df, how="left", on=["fight_id", "FighterID_espn", "OpponentID_espn"],
@@ -151,6 +171,7 @@ class AccEloWrapper(object):
         self.fitted_elo_estimators = dict()
         
     def fit_transform_all(self, df):
+        df = df.drop_duplicates(subset=["fight_id"])
         elo_feature_list = []
         elo_feat_df = df[["fight_id"]].copy()
         for (landed_col, attempt_col), alpha in self.elo_alphas.items():
@@ -171,6 +192,8 @@ class AccEloWrapper(object):
         return elo_feat_df
     
     def fit_predict(self, train_df, test_df):
+        train_df = train_df.drop_duplicates(subset=["fight_id"])
+        # don't have to drop duplicates for test_df because we're not fitting anything
         train_feat_df = train_df[["fight_id"]].copy()
         test_feat_df = test_df[["fight_id"]].copy()
         for (landed_col, attempt_col), alpha in self.elo_alphas.items():
