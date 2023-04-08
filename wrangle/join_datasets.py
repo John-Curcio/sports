@@ -491,7 +491,23 @@ def load_the_historical_odds_df():
     odds_df["FighterID"] = odds_df["FighterName"]
     odds_df["OpponentID"] = odds_df["OpponentName"]
     odds_df["Date"] = pd.to_datetime(pd.to_datetime(odds_df["commence_time"]).dt.date)
-    return odds_df
+    fighter_cols = [
+        "FighterName", "FighterID",
+        "open_fighter_decimal_odds", "close_fighter_decimal_odds",
+    ]
+    opponent_cols = [
+        "OpponentName", "OpponentID", 
+        "open_opponent_decimal_odds", "close_opponent_decimal_odds",
+    ]
+    complement_col_map = dict()
+    for f_col, o_col in zip(fighter_cols, opponent_cols):
+        complement_col_map[f_col] = o_col
+        complement_col_map[o_col] = f_col
+    odds_df_complement = odds_df.rename(columns=complement_col_map)
+    return pd.concat([
+        odds_df,
+        odds_df_complement
+    ]).reset_index(drop=True)
 
 def join_the_odds_espn():
     print("loading espn data")
@@ -534,7 +550,18 @@ def join_the_odds_espn():
 
     # when we join the-odds and espn data, we want to keep the 
     # dates from the-odds data. 
-    the_odds_to_espn_map = the_odds_df_jitter.merge(
+    left = pd.concat([
+        the_odds_df_jitter,
+        the_odds_df_jitter.assign(
+            FighterID=the_odds_df_jitter["OpponentID"],
+            OpponentID=the_odds_df_jitter["FighterID"],
+        ),
+    ])[[
+        "FighterID", "OpponentID",
+        "Date_pre_overwrite",
+        "Date"
+    ]]
+    the_odds_to_espn_map = left.merge(
         the_odds_to_espn_map,
         left_on=["FighterID", "OpponentID", "Date"],
         right_on=["FighterID_the_odds", "OpponentID_the_odds", "Date"],
