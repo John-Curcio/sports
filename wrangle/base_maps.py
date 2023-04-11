@@ -314,6 +314,34 @@ MANUAL_BFO_ESPN_MAP = {
     "Diego-Dias-11750": "4916590", # (most similar to "diego dias")
 
     "Robson-Junior-11403": "4917065",
+
+    "Lom-Ali-Eskijew-8135": "4321977",
+
+    "Zarah-Fairn-Dos-Santos-7522": "4078218",
+    "Abusupiyan-Magomedov-8265": "3077822",
+    "Montserrat-Ruiz-8705": "4399703",
+    
+    # mappings courtesy of ChatGPT
+    "Carlos-Graca-8951": "5075977",
+    "Matej-Penaz-10083": "5060472",
+    "Roybert-Echeverria-11653": "5075937",
+    "Earnest-Walls-11682": "4565643",
+    "Kory-Moegenburg-12251": "4231045",
+    "Bobby-Seronio-III-12458": "4884789",
+    "Socrates-Hernandez-10003": "4884791",
+    "Felipe-Maia-12686": "4808689",
+    "Tamika-Jones-13091": "5121336",
+    # "Carlos-Leal-Miranda-7744": "3146349",
+    "Kyra-Batara-4933": "3796887",
+    "Cleveland-McLean-9934": "4036098",
+    "Jacob-Silva-5302": "4193828",
+    "Daniel-Lacerda-12102": "4895772",
+    "Szymon-Bajor-5517": "3093739",
+    "Ronny-Markes-2605": "2559755",
+    "Topnoi-Kiwram-13938": "4711335",
+    "Tyler-Flores-10228": "4010873",
+    "Paulo-Laia-15272": "4870267",
+    "Kaytlin-Neil-7549": "4244337",
 }
 
 MANUAL_THE_ODDS_ESPN_MAP = {

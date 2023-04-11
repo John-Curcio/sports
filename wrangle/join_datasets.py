@@ -238,7 +238,7 @@ class IsomorphismFinder(object):
         inner-joining on fighter names and date. That gives us a subset of the full 
         mapping btw IDs in df_aux --> df_canon, which we want to learn.
         * "Propagate" step: Based on this subset of the mapping, we find FighterIDs 
-        in df_aux and df_canon that fought a lot of known opponents. We call this set of 
+        in df_aux and df_canon that fought known opponents. We call this set of 
         FighterIDs the "frontier" of the map, and we then try to 
         link these FighterIDs to each other. For example:
 
@@ -260,9 +260,8 @@ class IsomorphismFinder(object):
         """
         self.find_base_map()
         # get dates of tournament fights
-        aux_tournament_dates = self.get_tournament_dates(self.df_aux)
-        canon_tournament_dates = self.get_tournament_dates(self.df_canon)
-        tournament_dates = aux_tournament_dates.union(canon_tournament_dates)
+        # only consider canon tournament dates; aux has too much dirty data
+        tournament_dates = self.get_tournament_dates(self.df_canon)
         # remove tournament fights from df_aux and df_canon
         df_aux_sub = self.df_aux[~self.df_aux["Date"].isin(tournament_dates)]
         df_canon_sub = self.df_canon[~self.df_canon["Date"].isin(tournament_dates)]
@@ -284,7 +283,7 @@ class IsomorphismFinder(object):
                       {len(self.stray_fights)} fights left unaccounted for.")
                 break
         # okay, now we finally include tournament fights
-        # Some fighters fought in non-tournament-style fights, so we have 
+        # Some fighters also fought in non-tournament-style fights, so we have 
         # probably learned their mappings already. So now let's try propagating
         # those mappings to the tournament fights.
         print("okay, now we finally include tournament fights")
