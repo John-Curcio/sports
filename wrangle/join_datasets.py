@@ -10,10 +10,12 @@ def get_fight_id(fighter_id, opponent_id, date):
     * opponent_id
     * date
     """
-    max_id = np.maximum(fighter_id.fillna("unknown"), 
-                        opponent_id.fillna("unknown"))
-    min_id = np.minimum(fighter_id.fillna("unknown"),
-                        opponent_id.fillna("unknown"))
+    if fighter_id.isnull().any():
+        fighter_id = fighter_id.fillna("unknown")
+    if opponent_id.isnull().any():
+        opponent_id = opponent_id.fillna("unknown")
+    max_id = np.maximum(fighter_id, opponent_id)
+    min_id = np.minimum(fighter_id, opponent_id)
     date = pd.to_datetime(date).dt.date
     return date.astype(str) + "_" + min_id + "_" + max_id
 
@@ -236,7 +238,7 @@ class IsomorphismFinder(object):
         inner-joining on fighter names and date. That gives us a subset of the full 
         mapping btw IDs in df_aux --> df_canon, which we want to learn.
         * "Propagate" step: Based on this subset of the mapping, we find FighterIDs 
-        in df_aux and df_canon that fought a lot of known opponents. We call this set of 
+        in df_aux and df_canon that fought known opponents. We call this set of 
         FighterIDs the "frontier" of the map, and we then try to 
         link these FighterIDs to each other. For example:
 
@@ -258,9 +260,8 @@ class IsomorphismFinder(object):
         """
         self.find_base_map()
         # get dates of tournament fights
-        aux_tournament_dates = self.get_tournament_dates(self.df_aux)
-        canon_tournament_dates = self.get_tournament_dates(self.df_canon)
-        tournament_dates = aux_tournament_dates.union(canon_tournament_dates)
+        # only consider canon tournament dates; aux has too much dirty data
+        tournament_dates = self.get_tournament_dates(self.df_canon)
         # remove tournament fights from df_aux and df_canon
         df_aux_sub = self.df_aux[~self.df_aux["Date"].isin(tournament_dates)]
         df_canon_sub = self.df_canon[~self.df_canon["Date"].isin(tournament_dates)]
@@ -277,10 +278,12 @@ class IsomorphismFinder(object):
                     ~self.df_aux["OpponentID"].isin(self.fighter_id_map.index)
                 )
                 self.stray_fights = df_aux_sub.loc[stray_inds]
-                print(f"no more fights in frontier to add to map. map has size {len(self.fighter_id_map)} fighters mapped. {len(self.stray_fights)} fights left unaccounted for.")
+                print(f"no more fights in frontier to add to map. map has size \
+                      {len(self.fighter_id_map)} fighters mapped. \
+                      {len(self.stray_fights)} fights left unaccounted for.")
                 break
         # okay, now we finally include tournament fights
-        # Some fighters fought in non-tournament-style fights, so we have 
+        # Some fighters also fought in non-tournament-style fights, so we have 
         # probably learned their mappings already. So now let's try propagating
         # those mappings to the tournament fights.
         print("okay, now we finally include tournament fights")
@@ -296,7 +299,9 @@ class IsomorphismFinder(object):
                     ~self.df_aux["OpponentID"].isin(self.fighter_id_map.index)
                 )
                 self.stray_fights = df_aux_sub.loc[stray_inds]
-                print(f"no more fights to map. map has size {len(self.fighter_id_map)} fighters mapped. {len(self.stray_fights)} fights left unaccounted for.")
+                print(f"no more fights to map. map has size \
+                      {len(self.fighter_id_map)} fighters mapped. \
+                      {len(self.stray_fights)} fights left unaccounted for.")
                 break
         
         return self.fighter_id_map
@@ -307,6 +312,133 @@ class IsomorphismFinder(object):
         names = names.fillna("").str.strip().str.lower()\
                 .replace(to_replace=to_replace, value=value)
         return names
+
+
+class MapFinder(object):
+    """
+    class for finding the mapping between two sets of IDs
+    in order to join two datasets.
+    Provides a handy wrapper around the IsomorphismFinder
+    class, which is used to find the mapping.
+
+    Note that MapFinder.aux_to_canon_map maps 
+    (FighterID_aux, OpponentID_aux, Date) -> (FighterID_canon, OpponentID_canon, Date)
+    whereas IsomorphismFinder.fighter_id_maps
+    (FighterID_aux) -> (FighterID_canon)
+    """
+
+    def __init__(self, df_aux, df_canon, 
+                 aux_suffix, canon_suffix,
+                 false_overwrite_canon_map=None,
+                 manual_map=None):
+        """
+        df_aux: auxiliary dataframe
+        df_canon: canonical dataframe
+        aux_suffix: suffix to add to aux ID columns
+        canon_suffix: suffix to add to canon ID columns
+        false_overwrite_canon_map: overwrite certain IDs in the canonical dataframe
+        manual_map: dict of manual mappings
+        """
+        self.df_aux = df_aux
+        self.df_canon = df_canon
+        self.aux_suffix = aux_suffix
+        self.canon_suffix = canon_suffix
+        self.false_overwrite_canon_map = false_overwrite_canon_map
+        self.manual_map = manual_map
+        self.iso_finder = None
+        self.aux_to_canon_map = None
+
+    def assign_overwritten_ids(self, df, map):
+        """
+        overwrite certain IDs in the dataframe. Hang onto 
+        the original IDs in a new column.
+        """
+        if map is None:
+            map = dict()
+        return df.assign(
+            FighterID_pre_overwrite=df["FighterID"],
+            OpponentID_pre_overwrite=df["OpponentID"],
+            FighterID=df["FighterID"].replace(map),
+            OpponentID=df["OpponentID"].replace(map),
+        )
+
+    def find_map(self, n_iters=20):
+        """
+        Find the mapping between the two sets of IDs.
+        Returns a pd.DataFrame that defines the mapping
+        between df_aux -> df_canon. The columns are:
+            - FighterID_{aux_suffix}
+            - FighterID_{canon_suffix}
+            - OpponentID_{aux_suffix}
+            - OpponentID_{canon_suffix}
+            - Date
+        """
+        # some pages in some especially dirty sites actually 
+        # comprise data for multiple fighters, who usually happen
+        # to have the same name. So when we're trying to find the
+        # mapping between the two sets of IDs, we actually temporarily
+        # merge groups of canonical IDs into a single ID, and then
+        # split them back up after we've found the mapping. This depends
+        # on the fact that it would be extremely rare and confusing
+        # for fans if two fighters with the same name fought on the same
+        # day. So we can safely merge them into a single ID.
+        df_canon_copy = self.assign_overwritten_ids(
+            self.df_canon, self.false_overwrite_canon_map,
+        )
+        df_aux_copy = self.df_aux.copy()
+        iso_finder = IsomorphismFinder(
+            df_aux=df_aux_copy, df_canon=df_canon_copy,
+            manual_map=self.manual_map,
+        )
+        self.iso_finder = iso_finder
+        iso_finder.find_isomorphism(n_iters=n_iters)
+        # now in df_aux_copy, let's add the corresponding canonical IDs
+        # use fighter_id_map to find the corresponding canonical FighterIDs (post overwrite)
+        f_id_canon_col = "FighterID_"+self.canon_suffix
+        o_id_canon_col = "OpponentID_"+self.canon_suffix
+        f_id_aux_col = "FighterID_"+self.aux_suffix
+        o_id_aux_col = "OpponentID_"+self.aux_suffix
+        df_aux_copy[f_id_canon_col] = df_aux_copy["FighterID"].map(iso_finder.fighter_id_map)
+        df_aux_copy[o_id_canon_col] = df_aux_copy["OpponentID"].map(iso_finder.fighter_id_map)
+        df_aux_copy = df_aux_copy.rename(columns={
+            "FighterID": f_id_aux_col,
+            "OpponentID": o_id_aux_col,
+        })
+        # iso_finder.fighter_id_map gave us the mapping 
+        # (aux_fighter_id) -> (canon_fighter_id (post overwrite)))
+        # now, we're going to use this to inner merge
+        # df_aux_copy and df_canon_copy, and then use the result
+        # to define the mapping
+        # (aux_fighter_id, aux_opponent_id, date) -> (canon_fighter_id, canon_opponent_id, date)
+        # (pre-overwrite)
+        aux_to_canon_map = df_aux_copy[[
+            f_id_aux_col, o_id_aux_col,
+            f_id_canon_col, o_id_canon_col,
+            "Date",
+        ]]
+        aux_to_canon_map = aux_to_canon_map.merge(
+            df_canon_copy[[
+                "FighterID", "OpponentID",
+                "FighterID_pre_overwrite", "OpponentID_pre_overwrite",
+                "Date",
+            ]].rename(columns={
+                "FighterID": f_id_canon_col,
+                "OpponentID": o_id_canon_col,
+            }),
+            on=[f_id_canon_col, o_id_canon_col, "Date"],
+            how="inner", # inner join drops fights where we don't have a mapping
+        )
+        # replace the overwritten IDs with the original IDs
+        # so now we have the mapping between the original IDs
+        aux_to_canon_map = aux_to_canon_map\
+            .drop(columns=[f_id_canon_col, o_id_canon_col])\
+            .rename(columns={
+                "FighterID_pre_overwrite": f_id_canon_col,
+                "OpponentID_pre_overwrite": o_id_canon_col,
+            })
+        # and we're done!
+        self.aux_to_canon_map = aux_to_canon_map
+        return aux_to_canon_map
 
 def load_espn_df():
     espn_df = base_db_interface.read("clean_espn_data")
@@ -348,6 +480,104 @@ def load_bfo_df():
     bfo_df["FighterID"] = bfo_df["FighterID"].replace(to_replace, value)
     bfo_df["OpponentID"] = bfo_df["OpponentID"].replace(to_replace, value)
     return bfo_df
+
+def load_the_historical_odds_df():
+    odds_df = base_db_interface.read("the_historical_odds_open_close")\
+        .rename(columns={
+        "fighter_name": "FighterName",
+        "opponent_name": "OpponentName",
+    })
+    odds_df["FighterID"] = odds_df["FighterName"]
+    odds_df["OpponentID"] = odds_df["OpponentName"]
+    odds_df["Date"] = pd.to_datetime(pd.to_datetime(odds_df["commence_time"]).dt.date)
+    fighter_cols = [
+        "FighterName", "FighterID",
+        "open_fighter_decimal_odds", "close_fighter_decimal_odds",
+    ]
+    opponent_cols = [
+        "OpponentName", "OpponentID", 
+        "open_opponent_decimal_odds", "close_opponent_decimal_odds",
+    ]
+    complement_col_map = dict()
+    for f_col, o_col in zip(fighter_cols, opponent_cols):
+        complement_col_map[f_col] = o_col
+        complement_col_map[o_col] = f_col
+    odds_df_complement = odds_df.rename(columns=complement_col_map)
+    return pd.concat([
+        odds_df,
+        odds_df_complement
+    ]).reset_index(drop=True)
+
+def join_the_odds_espn():
+    print("loading espn data")
+    espn_df = load_espn_df()[[
+        "FighterID", "OpponentID",
+        "Date",
+        "OpponentName", "FighterName",
+    ]]
+    print("loading the-odds data")
+    the_odds_df = load_the_historical_odds_df()[[
+        "FighterID", "OpponentID",
+        "Date",
+        "OpponentName", "FighterName",
+    ]].drop_duplicates()
+    # add a jitter of +/- 1 day to the-odds data
+    # because the-odds dates are sometimes off by a day
+    the_odds_df_jitter = pd.concat([
+        the_odds_df.assign(
+            Date_pre_overwrite=the_odds_df["Date"],
+        ),
+        the_odds_df.assign(
+            Date=the_odds_df["Date"] - pd.Timedelta(days=1),
+            Date_pre_overwrite=the_odds_df["Date"],
+        ),
+        the_odds_df.assign(
+            Date=the_odds_df["Date"] + pd.Timedelta(days=1),
+            Date_pre_overwrite=the_odds_df["Date"],
+        ),
+    ]).reset_index()
+
+    map_finder = MapFinder(
+        # df_aux=the_odds_df, 
+        df_aux=the_odds_df_jitter,
+        df_canon=espn_df,
+        aux_suffix="the_odds", canon_suffix="espn",
+        manual_map=MANUAL_THE_ODDS_ESPN_MAP,
+    )
+    the_odds_to_espn_map = map_finder.find_map(n_iters=20)
+    the_odds_to_espn_map = the_odds_to_espn_map.drop_duplicates()
+
+    # when we join the-odds and espn data, we want to keep the 
+    # dates from the-odds data. 
+    left = pd.concat([
+        the_odds_df_jitter,
+        the_odds_df_jitter.assign(
+            FighterID=the_odds_df_jitter["OpponentID"],
+            OpponentID=the_odds_df_jitter["FighterID"],
+        ),
+    ])[[
+        "FighterID", "OpponentID",
+        "Date_pre_overwrite",
+        "Date"
+    ]]
+    the_odds_to_espn_map = left.merge(
+        the_odds_to_espn_map,
+        left_on=["FighterID", "OpponentID", "Date"],
+        right_on=["FighterID_the_odds", "OpponentID_the_odds", "Date"],
+        how="inner",
+    ).rename(columns={
+        "Date_pre_overwrite": "Date_the_odds",
+        "Date": "Date_espn",
+    })[[
+        "FighterID_the_odds", "OpponentID_the_odds",
+        "Date_the_odds", "Date_espn",
+        "FighterID_espn", "OpponentID_espn",
+    ]]
+    base_db_interface.write_replace(
+        "the_odds_espn_fighter_id_map",
+        the_odds_to_espn_map,
+    )
+    return the_odds_to_espn_map
 
 def find_ufc_espn_mapping():
     print("loading espn data")
@@ -493,13 +723,14 @@ def find_bfo_ufc_mapping():
 
 def join_bfo_espn_ufc(bfo_df, espn_df, ufc_df):
     """
-    After we've found the mapping between BFO and UFC data, as well as 
+    After we've found the mapping between BFO and ESPN data, as well as 
     the mapping between ESPN and UFC data, we can join the three datasets 
     together. This is the final step before we start doing final feature 
     engineering.
     """
     ufc_to_espn_map = base_db_interface.read("ufc_to_espn_map")
-    bfo_to_ufc_map = base_db_interface.read("bfo_to_ufc_map")
+    bfo_to_espn_map = base_db_interface.read("bfo_to_espn_map")
+
     # join ufc and espn data
     espn_df = espn_df.rename(columns={
         "FighterID": "FighterID_espn",
@@ -532,18 +763,18 @@ def join_bfo_espn_ufc(bfo_df, espn_df, ufc_df):
     ]).sort_values("Date").reset_index(drop=True)
     espn_ufc_df["is_upcoming"] = espn_ufc_df["is_upcoming"].fillna(0).astype(int)
 
-    # join bfo data
-    bfo_ufc_df = bfo_df.rename(columns={
+    # join bfo data with espn_ufc_df
+    bfo_espn_df = bfo_df.rename(columns={
         "FighterID": "FighterID_bfo",
         "OpponentID": "OpponentID_bfo",
     }).merge(
-        bfo_to_ufc_map,
+        bfo_to_espn_map,
         on=["FighterID_bfo", "OpponentID_bfo", "Date"],
         how="inner",
     )
     bfo_espn_ufc_df = espn_ufc_df.merge(
-        bfo_ufc_df,
-        on=["FighterID_ufc", "OpponentID_ufc", "Date"],
+        bfo_espn_df,
+        on=["FighterID_espn", "OpponentID_espn", "Date"],
         how="left",
         suffixes=("","_bfo")
     )
@@ -569,6 +800,79 @@ def join_bfo_espn_ufc(bfo_df, espn_df, ufc_df):
         bfo_espn_ufc_df,
     )
     return bfo_espn_ufc_df
+
+
+def find_bfo_espn_mapping():
+    bfo_df = load_bfo_df().dropna(subset=[
+        # fat lot of good a row will do if it doesn't have IDs or odds
+        "FighterID", "OpponentID",
+        "FighterOpen", "OpponentOpen",
+        "Date",
+    ])[[
+        "FighterID", "OpponentID", 
+        "Date", 
+        "OpponentName", "FighterName",
+    ]]
+    espn_df = load_espn_df()[[
+        "FighterID", "OpponentID", 
+        "Date", 
+        "OpponentName", "FighterName",
+    ]]
+    # some pages in bestfightodds.com actually comprise data for multiple fighters,
+    # who happen to have the same name. 
+    # So when we're trying to join BFO and ESPN data, we temporarily merge the
+    # ESPN IDs for these fighters into one, and then split them again later.
+    temp_espn_df = espn_df.copy()
+    temp_espn_df["FighterID_pre_overwrite"] = temp_espn_df["FighterID"]
+    temp_espn_df["OpponentID_pre_overwrite"] = temp_espn_df["OpponentID"]
+    temp_espn_df["FighterID"] = temp_espn_df["FighterID"].replace(FALSE_OVERWRITE_ESPN_MAP)
+    temp_espn_df["OpponentID"] = temp_espn_df["OpponentID"].replace(FALSE_OVERWRITE_ESPN_MAP)
+
+    iso_finder = IsomorphismFinder(
+        df_aux=bfo_df, df_canon=temp_espn_df,
+        manual_map=MANUAL_BFO_ESPN_MAP,
+    )
+
+    iso_finder.find_isomorphism(n_iters=20)
+
+    # use fighter_id_map to find the corresponding ESPN FighterIDs (post overwrite)
+    bfo_to_espn_map = bfo_df.assign(
+        FighterID_espn=bfo_df["FighterID"].map(iso_finder.fighter_id_map),
+        OpponentID_espn=bfo_df["OpponentID"].map(iso_finder.fighter_id_map),
+    ).rename(columns={
+        "FighterID": "FighterID_bfo",
+        "OpponentID": "OpponentID_bfo",
+    })[[
+        "FighterID_bfo", "OpponentID_bfo",
+        "FighterID_espn", "OpponentID_espn",
+        "Date",
+    ]]
+
+    # join with espn_df to get the pre-overwrite FighterIDs
+    bfo_to_espn_map = bfo_to_espn_map.merge(
+        temp_espn_df[[
+            "FighterID", "OpponentID",
+            "FighterID_pre_overwrite", "OpponentID_pre_overwrite",
+            "Date",
+        ]].rename(columns={
+            "FighterID": "FighterID_espn",
+            "OpponentID": "OpponentID_espn",
+        }),
+        on=["FighterID_espn", "OpponentID_espn", "Date"],
+        how="inner", # inner join drops fights where we don't have a mapping
+    )
+    # drop the post-overwrite FighterIDs
+    bfo_to_espn_map = bfo_to_espn_map\
+        .drop(columns=["FighterID_espn", "OpponentID_espn"])\
+        .rename(columns={
+            "FighterID_pre_overwrite": "FighterID_espn",
+            "OpponentID_pre_overwrite": "OpponentID_espn",
+        })
+
+    base_db_interface.write_replace(
+        "bfo_to_espn_map",
+        bfo_to_espn_map,
+    )
 
 def final_clean_step():
     """

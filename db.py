@@ -1,6 +1,8 @@
 import sqlite3
 import pandas as pd
 
+HOME_DIR = "/Users/john/play/sports/"
+
 class DbInterface(object):
     """
     Provide an interface to read from and write to a sqlite database
@@ -18,6 +20,15 @@ class DbInterface(object):
 
     def close(self):
         self._con.close()
+
+    def execute(self, sql, parameters=()):
+        self._cursor.execute(sql, parameters)
+
+    def executemany(self, sql, parameters=()):
+        self._cursor.executemany(sql, parameters)
+
+    def commit(self):
+        self._con.commit()
         
     def read(self, table_name):
         """
@@ -81,4 +92,4 @@ class DbInterface(object):
                 index=False
             )
 
-base_db_interface = DbInterface(db_name="mma.db")
+base_db_interface = DbInterface(db_name=HOME_DIR + "mma.db")

@@ -164,6 +164,40 @@ FALSE_OVERWRITE_UFC_MAP = {
     "12ebd7d157e91701": "294aa73dbf37d281",
 }
 
+FALSE_OVERWRITE_ESPN_MAP = {
+    # some pages in bestfightodds.com actually comprise data for multiple fighters,
+    # who happen to have the same name. 
+    # So when we're trying to join BFO and ESPN data, we temporarily merge the
+    # ESPN IDs for these fighters into one, and then split them again later.
+# https://www.bestfightodds.com/fighters/Alex-Schoenauer-335
+    '2951428': '2335745',
+# https://www.bestfightodds.com/fighters/Bruno-Carvalho-2451
+    '3104455': '2561001',
+# https://www.bestfightodds.com/fighters/Bruno-Silva-7121
+    '4333158': '3895544',
+# https://www.bestfightodds.com/fighters/Elias-Garcia-4042
+    '3111338': '3028421',
+# https://www.bestfightodds.com/fighters/Elijah-Harris-9867
+    '4455612': '5119542',
+# https://www.bestfightodds.com/fighters/Joey-Gomez-6023
+    '4357555': '3947131',
+# https://www.bestfightodds.com/fighters/Jordan-Johnson-3341
+    '3082396': '4070161',
+# https://www.bestfightodds.com/fighters/Magomed-Idrisov-7339
+    '5126239': '4011477',
+# https://www.bestfightodds.com/fighters/Michael-Graves-5242
+    '4342232': '3890654',
+# https://www.bestfightodds.com/fighters/Rafael-Dias-527
+    '4325203': '2554931',
+# https://www.bestfightodds.com/fighters/Rafael-Silva-4257
+    '2511421': '2957832',
+# https://www.bestfightodds.com/fighters/Steve-Garcia-2576
+    '4237933': '3023804',
+# https://www.bestfightodds.com/fighters/Thiago-Santos-2526
+    '2559760': '3045798',
+    '4710380': '3045798',
+}
+
 MANUAL_BFO_UFC_MAP = {
     ### current top ranked in each weight class
     # deiveson figueiredo
@@ -264,4 +298,72 @@ MANUAL_BFO_ESPN_MAP = {
     "Weili-Zhang-7955": "4350762",
     # valentina shevchenko
     "Valentina-Shevchenko-5475": "2554705",
+    ####### resolving conflicts ########
+    "Thiago-Santos-2526": "3045798",
+
+    "Brett-Bergmark-1973": "2504260",
+    
+    "Carlos-Leal-Miranda-7744": "3146349", # (most similar to "carlos leal")
+    "Rodolfo-Marques-2711": "2578777", # (most similar to "rodolfo marques diniz")
+    "Teodoras-Aukstulis-6120": "3955016", # (most similar to "teodoras aukstuolis")
+    "Kevin-Morerya-7709": "4393564", # (most similar to "kevin moreyra")
+    "Mikey-Erosa-7707": "3083639", # (most similar to "mike erosa")
+    "Sunna-Rannveig-Davidsdottir-9086": "4048393", # (most similar to "sunna davidsdottir")
+    "Diana-Belbirr-13003": "3977987", # (most similar to "diana belbita")
+
+    "Diego-Dias-11750": "4916590", # (most similar to "diego dias")
+
+    "Robson-Junior-11403": "4917065",
+
+    "Lom-Ali-Eskijew-8135": "4321977",
+
+    "Zarah-Fairn-Dos-Santos-7522": "4078218",
+    "Abusupiyan-Magomedov-8265": "3077822",
+    "Montserrat-Ruiz-8705": "4399703",
+    
+    # mappings courtesy of ChatGPT
+    "Carlos-Graca-8951": "5075977",
+    "Matej-Penaz-10083": "5060472",
+    "Roybert-Echeverria-11653": "5075937",
+    "Earnest-Walls-11682": "4565643",
+    "Kory-Moegenburg-12251": "4231045",
+    "Bobby-Seronio-III-12458": "4884789",
+    "Socrates-Hernandez-10003": "4884791",
+    "Felipe-Maia-12686": "4808689",
+    "Tamika-Jones-13091": "5121336",
+    # "Carlos-Leal-Miranda-7744": "3146349",
+    "Kyra-Batara-4933": "3796887",
+    "Cleveland-McLean-9934": "4036098",
+    "Jacob-Silva-5302": "4193828",
+    "Daniel-Lacerda-12102": "4895772",
+    "Szymon-Bajor-5517": "3093739",
+    "Ronny-Markes-2605": "2559755",
+    "Topnoi-Kiwram-13938": "4711335",
+    "Tyler-Flores-10228": "4010873",
+    "Paulo-Laia-15272": "4870267",
+    "Kaytlin-Neil-7549": "4244337",
+}
+
+MANUAL_THE_ODDS_ESPN_MAP = {
+    "Austin Lingo": "4570669",
+    "Da Un Jung": "4389252",
+    "Leon Edwards": "3152929",
+    "Weili Zhang": "4350762",
+    "Marlon Vera": "3155424",
+    "Holly Holm": "3028404",
+    "Patrick Downey": "4913863",
+    "Juliana Miller": "4912582",
+
+    "Rick Glenn": "3030256",
+    "Sergey Pavlovich": "4217395",
+    "Shamil Abdurahimov": "2558062",
+    "Abusupyian Magomedov": "3077822",
+    "Carlos Diego Ferreira": "3026133",
+    "Maxim Grishin": "2558492",
+
+    "Zarah Fairn Dos Santos": "4078218",
+    "Orion Cosce": "4687126",
+
+    "Deiveson Figueiredo": "4189320",
+    "Amanda Nunes": "2516131",
 }
