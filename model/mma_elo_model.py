@@ -6,13 +6,19 @@ from tqdm import tqdm
 from sklearn.metrics import log_loss, accuracy_score, mean_squared_error, mean_absolute_error
 from sklearn.preprocessing import OneHotEncoder
 from scipy.special import expit, logit
+from abc import ABC, abstractmethod
 
 unknown_fighter_id = "2557037" # "2557037/unknown-fighter"
 
+class BaseEloEstimator(ABC):
+    """
+    Abstract Base class for Elo estimators.
+    Requires a few methods to be implemented:
+    - update_powers
+    - predict_given_powers
+    - fit_initial_params
+    """
 
-class RealEloEstimator(object):
-    # This thing is reasonably fast
-    
     def __init__(self, target_col, alpha=0.5):
         self.target_col = target_col
         self.alpha = alpha
@@ -22,210 +28,167 @@ class RealEloEstimator(object):
         self._fighter_encoder = None
         self._fighter_powers = None
         self.elo_feature_df = None
-        
+        # store the matrices for the fighter ids and opponent ids
+        # self.fighter_id_mat = None
+        # self.opponent_id_mat = None
+        # debugging
+        # self.workhorse_df = None
+
     def transform_fighter_ids(self, fighter_ids:pd.Series):
         return self._fighter_encoder.transform(fighter_ids.values.reshape(-1,1))
     
-    def _fit_workhorse(self, df:pd.DataFrame):
-        # kind of a cheap name for a function, but this is where the elo update
-        # rule is actually applied
-        df = df.dropna(subset=[self.target_col])
-        fighter_id_mat = self.transform_fighter_ids(df["FighterID_espn"])
-        opponent_id_mat = self.transform_fighter_ids(df["OpponentID_espn"])
-        pred_elo_features = np.zeros(len(df))
-        fighter_elos = np.zeros(len(df))
-        opponent_elos = np.zeros(len(df))
-        deltas = np.zeros(len(df))
-        y = df[self.target_col].values
-        for i in tqdm(range(df.shape[0])):
-            fighter_id_vec = fighter_id_mat[i]
-            opponent_id_vec = opponent_id_mat[i]
-            fighter_elos[i] = self._fighter_powers * fighter_id_vec.T
-            opponent_elos[i] = self._fighter_powers * opponent_id_vec.T
-            y_hat = fighter_elos[i] - opponent_elos[i]
-            pred_elo_features[i] = y_hat
-            # half the delta update goes towards updating the fighter's elo, 
-            # half to the opponent's elo
-            delta = self.alpha * (y[i] - y_hat)
-            self._fighter_powers += (0.5 * delta * (fighter_id_vec - opponent_id_vec))
-            deltas[i] = delta
-        updated_fighter_elos = fighter_elos + (deltas / 2)
-        updated_opponent_elos = opponent_elos - (deltas / 2)
-        return df[[
-            "fight_id", 
-            "FighterID_espn", "OpponentID_espn", 
-            self.target_col
-        ]].assign(
-            pred_target=pred_elo_features,
-            fighter_elo=fighter_elos,
-            opponent_elo=opponent_elos,
-            updated_fighter_elo=updated_fighter_elos,
-            updated_opponent_elo=updated_opponent_elos,
-        )
-    
-    def _fit_ffill(self, elo_df:pd.DataFrame):
-        elo_df = elo_df.copy()      
-        # many of these fighters are guys who competed in cheap leagues their whole
-        # careers, and never recorded the target statistic. We impute their elo scores with 0
-        df_with_target = elo_df.dropna(subset=[self.target_col])
-        fighter_ids_with_target = set(df_with_target["FighterID_espn"]) | \
-                                  set(df_with_target["OpponentID_espn"])
-        useless_fighter_ids = set(self.fighter_ids) - fighter_ids_with_target
-        self.fighter_ids_with_target = pd.Series(sorted(fighter_ids_with_target))
-        if not elo_df[self.target_col].isnull().any():
-            # no need to ffill
-            self.useless_fighter_ids = pd.Series([], dtype='int64')
-            elo_df["pred_target"] = elo_df["fighter_elo"] - elo_df["opponent_elo"]
-            return elo_df  
-        self.useless_fighter_ids = pd.Series(sorted(useless_fighter_ids))
-        is_useless_fighter  = elo_df["FighterID_espn"].isin(useless_fighter_ids)
-        is_useless_opponent = elo_df["OpponentID_espn"].isin(useless_fighter_ids)
-        elo_df.loc[is_useless_fighter, ['fighter_elo', 'updated_fighter_elo']] = 0
-        elo_df.loc[is_useless_opponent, ['opponent_elo', 'updated_opponent_elo']] = 0
-        # for fighters who eventually logged the target statistic, we start from 0,
-        # and forward-fill their most recent elo score
-        for fighter_id in tqdm(fighter_ids_with_target):
-            is_fighter_bool  = elo_df["FighterID_espn"] == fighter_id
-            is_opponent_bool = elo_df["OpponentID_espn"] == fighter_id
-            is_fighter_ind = elo_df.index[is_fighter_bool]
-            is_opponent_ind = elo_df.index[is_opponent_bool]
-            # this is tricky - for fights that occurred after the statistic was recorded,
-            # we want to forward-fill the fighter's UPDATED elo scores, not the fighter's
-            # elo score prior to the fight where the stat was recorded
-            updated_fighter_elo = (
-                elo_df["updated_fighter_elo"] * is_fighter_bool +
-                elo_df["updated_opponent_elo"] * is_opponent_bool
-            ).loc[is_fighter_bool | is_opponent_bool]
-            # elo scores always start with 0
-            updated_fighter_elo.iloc[0] = np.nan_to_num(updated_fighter_elo.iloc[0], 0)
-            updated_fighter_elo = updated_fighter_elo.fillna(method='ffill')
-            # fill NaNs in fighter_elo and opponent_elo columns with now-ffilled updated_fighter_elo
-            elo_df.loc[is_fighter_ind, 'fighter_elo'] = \
-                elo_df.loc[is_fighter_ind, 'fighter_elo']\
-                    .fillna(updated_fighter_elo)
-            elo_df.loc[is_opponent_ind, 'opponent_elo'] = \
-                elo_df.loc[is_opponent_ind, 'opponent_elo']\
-                    .fillna(updated_fighter_elo)
-            # might as well fill NaNs in updated_fighter_elo and updated_opponent_elo columns
-            elo_df.loc[is_fighter_ind, 'updated_fighter_elo'] = updated_fighter_elo.loc[is_fighter_ind]
-            elo_df.loc[is_opponent_ind, 'updated_opponent_elo'] = updated_fighter_elo.loc[is_opponent_ind]
-        assert elo_df[["fighter_elo", "opponent_elo"]].isnull().any().any() == False, \
-            elo_df[["fighter_elo", "opponent_elo"]].isnull().mean()
-        elo_df["pred_target"] = elo_df["fighter_elo"] - elo_df["opponent_elo"]
-        return elo_df
+    def fit_fighter_encoder(self, fighter_ids:pd.Series):
+        self.fighter_ids = sorted(set(fighter_ids))
+        self._fighter_encoder = OneHotEncoder(handle_unknown="error")
+        self._fighter_encoder.fit(fighter_ids.values.reshape(-1,1))
 
-    def fit_fighter_encoder(self, df):
-        self.fighter_ids = sorted(set(df["FighterID_espn"]) | set(df["OpponentID_espn"]))
-        categories = np.array(self.fighter_ids).reshape(-1,1)
-        self._fighter_encoder = OneHotEncoder()
-        self._fighter_encoder.fit(categories)
-        
+    def fit_initial_params(self, df:pd.DataFrame):
+        """
+        Fit the initial parameters of the model, besides initializing the
+        powers of the fighters in self._fighter_powers and the
+        self._fighter_encoder.
+        """
+        raise NotImplementedError()
+    
+    def get_elo_update(self, y_true:np.ndarray, fighter_elo:np.ndarray, opponent_elo:np.ndarray, X: np.ndarray):
+        """
+        Get update to the powers of the fighters, given the observed target.
+        Note that this is a "batch" update, i.e. it updates all the powers
+        at once.
+        Also, this is a "doubled" dataset, i.e. that each fight is
+        represented twice, once for each (Fighter, Opponent) permutation.
+        - y_true: the observed target. May be NaN!
+        - fighter_elo: the powers of the fighters. Never NaN.
+        - opponent_elo: the powers of the opponents. Never NaN.
+        - X: the additional features. May be ignored.
+        Returns:
+        - (fighter_delta, opponent_delta): the updates to the powers of the 
+        fighters and opponents, respectively. May not be NaN.
+        These will be added to the corresponding indices in self._fighter_powers.
+        """
+        raise NotImplementedError()
+    
+    def predict_given_powers(self, fighter_elo:np.ndarray, opponent_elo:np.ndarray, X: np.ndarray) -> np.ndarray:
+        """
+        Predict the target given the powers of the fighters. df may be used to
+        extract additional features.
+        """
+        raise NotImplementedError()
+    
+    def extract_features(self, df: pd.DataFrame) -> np.ndarray:
+        """
+        Extract any additional features from the dataframe that may be used
+        in the prediction.
+        """
+        return np.zeros((len(df), 0))
+
     def fit(self, df:pd.DataFrame):
+        """
+        Assuming that the data is "doubled" - i.e. that each fight is
+        represented twice, once for each (Fighter, Opponent) permutation.
+        Returns a dataframe with the same number of rows as the input df.
+        df: pd.DataFrame
+        """
+        assert (df["fight_id"].value_counts() == 2).all()
+        df = df.sort_values(["fight_id", "FighterID_espn", "OpponentID_espn"])\
+            .reset_index(drop=True)
         if self.fighter_ids is None:
-            self.fit_fighter_encoder(df)
+            self.fit_fighter_encoder(df["FighterID_espn"])
         self._fighter_powers = np.zeros(len(self.fighter_ids))
-        
-        fitted_elo_df = self._fit_workhorse(df)
-        # okay this is the hard part - ffilling
-        keep_cols = ["fight_id", "FighterID_espn", "OpponentID_espn", "Date"]
-        elo_df = df[keep_cols].merge(
-            fitted_elo_df,
-            how="left",
-            on=["fight_id", "FighterID_espn", "OpponentID_espn"],
-        )
-        self.elo_feature_df = self._fit_ffill(elo_df)
-        return self.elo_feature_df
-    
-    def predict(self, df):
-        fighter_id_mat = self.transform_fighter_ids(df["FighterID_espn"])
-        opponent_id_mat = self.transform_fighter_ids(df["OpponentID_espn"])
-        # this will be a matrix of size (1, len(df))
-        y_hat = self._fighter_powers * (fighter_id_mat.T - opponent_id_mat.T)
-        # y_hat.A1 is a flattened 1D array of size (len(df),)
-        return pd.DataFrame({
-            "fight_id": df["fight_id"],
-            "FighterID_espn": df["FighterID_espn"],
-            "OpponentID_espn": df["OpponentID_espn"],
-            "pred_target": y_hat.A1,
-        })
-    
-    def get_fighter_career_elos(self, fighter_id):
-        # just for EDA
-        is_fighter_bool = self.elo_feature_df["FighterID_espn"] == fighter_id
-        is_opponent_bool = self.elo_feature_df["OpponentID_espn"] == fighter_id
-        is_fighting_bool = (
-            (self.elo_feature_df["FighterID_espn"] == fighter_id) |
-            (self.elo_feature_df["OpponentID_espn"] == fighter_id)
-        )
-        fight_dates = self.elo_feature_df.loc[is_fighting_bool, "Date"]
-        updated_elos = (
-            self.elo_feature_df["updated_fighter_elo"] * is_fighter_bool +
-            self.elo_feature_df["updated_opponent_elo"] * is_opponent_bool
-        ).loc[is_fighting_bool]
-        return pd.DataFrame({
-            "FighterID_espn": fighter_id,
-            "fight_date": fight_dates,
-            "n_fights": np.arange(0, is_fighting_bool.sum()),
-            "updated_elo": updated_elos,
-        })
-
-
-class BinaryEloEstimator(RealEloEstimator):
-    # This thing is reasonably fast
-    
-    def fit(self, df):
-        if self.fighter_ids is None:
-            self.fit_fighter_encoder(df)
-        self._fighter_powers = np.zeros(len(self.fighter_ids))
-        fighter_id_mat = self.transform_fighter_ids(df["FighterID_espn"])
-        opponent_id_mat = self.transform_fighter_ids(df["OpponentID_espn"])
-        pred_elo_features = np.zeros(len(df))
-        fighter_elos = np.zeros(len(df))
-        opponent_elos = np.zeros(len(df))
-        deltas = np.zeros(len(df))
-        y = df[self.target_col].values
-        for i in tqdm(range(df.shape[0])):
-            fighter_id_vec = fighter_id_mat[i]
-            opponent_id_vec = opponent_id_mat[i]
-            fighter_elos[i] = self._fighter_powers * fighter_id_vec.T
-            opponent_elos[i] = self._fighter_powers * opponent_id_vec.T
-            # lol this is the only change
-            y_hat = expit(fighter_elos[i] - opponent_elos[i])
-            pred_elo_features[i] = y_hat
-            delta = np.nan_to_num(self.alpha * (y[i] - y_hat), 0)
-            # half the delta update goes towards updating the fighter's elo, 
-            # half to the opponent's elo
-            self._fighter_powers += (0.5 * delta * (fighter_id_vec - opponent_id_vec))
-            deltas[i] = delta
-        updated_fighter_elos = fighter_elos + (deltas / 2)
-        updated_opponent_elos = opponent_elos - (deltas / 2)
-        
-        self.elo_feature_df = df[[
-            "fight_id", 
-            "FighterID_espn", "OpponentID_espn", 
-            "Date", self.target_col
+        # fit initial params, if any
+        self.fit_initial_params(df)
+        self.fighter_id_mat = self.transform_fighter_ids(df["FighterID_espn"])
+        self.opponent_id_mat = self.transform_fighter_ids(df["OpponentID_espn"])
+        fitted_elo_df = df[[
+            "fight_id", "FighterID_espn", "OpponentID_espn", "Date",
+            self.target_col,
         ]].assign(
-            pred_target=pred_elo_features,
-            fighter_elo=fighter_elos,
-            opponent_elo=opponent_elos,
-            updated_fighter_elo=updated_fighter_elos,
-            updated_opponent_elo=updated_opponent_elos,
+            pred_elo_target=np.nan, fighter_elo=np.nan, opponent_elo=np.nan,
+            updated_fighter_elo=np.nan, updated_opponent_elo=np.nan,
         )
-        return self.elo_feature_df
+        X = self.extract_features(df)
+        # loop over dates
+        for dt, grp in tqdm(df.groupby("Date")):
+            # df's index is simply the row number, so we can use that to
+            # index into the matrices. But this is the only place where
+            # we are allowed to do that! Inside the methods defined by the
+            # inheriting classes, we should only use numpy objects.
 
-    def predict(self, df):
-        fighter_id_mat = self.transform_fighter_ids(df["FighterID_espn"])
-        opponent_id_mat = self.transform_fighter_ids(df["OpponentID_espn"])
-        # this will be a matrix of size (1, len(df))
-        y_hat = expit(self._fighter_powers * (fighter_id_mat.T - opponent_id_mat.T))
-        # y_hat.A1 is a flattened 1D array of size (len(df),)
-        return pd.DataFrame({
-            "fight_id": df["fight_id"],
-            "FighterID_espn": df["FighterID_espn"],
-            "OpponentID_espn": df["OpponentID_espn"],
-            "pred_target": y_hat.A1,
-        })
-        
+            # pseudocode sketch
+            # 0. get powers for the fighters in this group
+            curr_fighter = self.fighter_id_mat[grp.index]
+            # # get current opponents (len(grp), n_fighters)
+            curr_opponent = self.opponent_id_mat[grp.index]
+            # get the powers of the fighters (len(grp),)
+            curr_fighter_powers = self._fighter_powers @ curr_fighter.T
+            # get the powers of the opponents
+            curr_opponent_powers = self._fighter_powers @ curr_opponent.T
+            # any current features that we want to use
+            curr_X = X[grp.index]
+            # 1. predict the target given the current powers
+            y_hat = self.predict_given_powers(
+                curr_fighter_powers, curr_opponent_powers, curr_X
+            )
+            # 2. save the predictions
+            fitted_elo_df.loc[grp.index, "pred_elo_target"] = y_hat
+            # 3. save the current powers
+            fitted_elo_df.loc[grp.index, "fighter_elo"] = curr_fighter_powers
+            fitted_elo_df.loc[grp.index, "opponent_elo"] = curr_opponent_powers
+            # 4. update the powers
+            fighter_delta, opponent_delta = self.get_elo_update(
+                grp[self.target_col].values, curr_fighter_powers, curr_opponent_powers, curr_X
+            )
+            self._fighter_powers += fighter_delta @ curr_fighter
+            self._fighter_powers += opponent_delta @ curr_opponent
+            # 5. save the updated powers
+            fitted_elo_df.loc[grp.index, "updated_fighter_elo"] = self._fighter_powers @ curr_fighter.T
+            fitted_elo_df.loc[grp.index, "updated_opponent_elo"] = self._fighter_powers @ curr_opponent.T
+        self.elo_feature_df = fitted_elo_df
+        return fitted_elo_df
+
+class RealEloEstimator(BaseEloEstimator):
+    """ 
+    Use this to estimate elo scores for real-valued, symmetric score differences.
+    """
+
+    def fit_initial_params(self, df: pd.DataFrame):
+        # # transform the fighter ids into a (n_fights, n_fighters) matrix
+        # self.fighter_id_mat = self.transform_fighter_ids(df["FighterID_espn"])
+        # # transform the opponent ids into a (n_fights, n_fighters) matrix
+        # self.opponent_id_mat = self.transform_fighter_ids(df["OpponentID_espn"])
+        return None
+    
+    def predict_given_powers(self, fighter_elo:np.ndarray, opponent_elo:np.ndarray, X: np.ndarray) -> np.ndarray:
+        # Simply return the difference in elo scores
+        return fighter_elo - opponent_elo
+    
+    def get_elo_update(self, y_true:np.ndarray, fighter_elo:np.ndarray, opponent_elo:np.ndarray, X: np.ndarray):
+        # get predictions
+        y_hat = self.predict_given_powers(fighter_elo, opponent_elo, X)
+        # the usual update rule is:
+        # self._fighter_powers += 0.5 * (alpha * (y_true - y_hat))
+        # because df is "doubled", we need to divide by 2
+        delta = 0.25 * self.alpha * (y_true - y_hat)
+        delta[np.isnan(delta)] = 0
+        return (delta, -1 * delta)
+ 
+class BinaryEloEstimator(BaseEloEstimator):
+    """
+    Use this to estimate elo scores for {0,1}-valued outcomes.
+    """
+
+    def predict_given_powers(self, fighter_elo: np.ndarray, opponent_elo: np.ndarray, X: np.ndarray) -> np.ndarray:
+        return expit(fighter_elo - opponent_elo)
+    
+    def get_elo_update(self, y_true: np.ndarray, fighter_elo: np.ndarray, opponent_elo: np.ndarray, X: np.ndarray):
+        # get predictions
+        y_hat = self.predict_given_powers(fighter_elo, opponent_elo, X)
+        # the usual update rule is the same as for real-valued outcomes:
+        # self._fighter_powers += 0.5 * (alpha * (y_true - y_hat))
+        # because df is "doubled", we need to divide by 2
+        delta = 0.25 * self.alpha * (y_true - y_hat)
+        delta[np.isnan(delta)] = 0
+        return (delta, -1 * delta)
 
 class AccEloEstimator(object):
     
