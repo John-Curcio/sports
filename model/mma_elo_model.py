@@ -44,11 +44,9 @@ class BaseEloEstimator(ABC):
 
     def fit_initial_params(self, df:pd.DataFrame):
         """
-        Fit the initial parameters of the model, besides initializing the
-        powers of the fighters in self._fighter_powers and the
-        self._fighter_encoder.
+        Fit initial parameters, if any.
         """
-        raise NotImplementedError()
+        return None
     
     def get_elo_update(self, y_true:np.ndarray, fighter_elo:np.ndarray, opponent_elo:np.ndarray, X: np.ndarray):
         """
@@ -97,8 +95,8 @@ class BaseEloEstimator(ABC):
         self._fighter_powers = np.zeros(len(self.fighter_ids))
         # fit initial params, if any
         self.fit_initial_params(df)
-        self.fighter_id_mat = self.transform_fighter_ids(df["FighterID_espn"])
-        self.opponent_id_mat = self.transform_fighter_ids(df["OpponentID_espn"])
+        fighter_id_mat = self.transform_fighter_ids(df["FighterID_espn"])
+        opponent_id_mat = self.transform_fighter_ids(df["OpponentID_espn"])
         fitted_elo_df = df[[
             "fight_id", "FighterID_espn", "OpponentID_espn", "Date",
             self.target_col,
@@ -116,9 +114,9 @@ class BaseEloEstimator(ABC):
 
             # pseudocode sketch
             # 0. get powers for the fighters in this group
-            curr_fighter = self.fighter_id_mat[grp.index]
+            curr_fighter = fighter_id_mat[grp.index]
             # # get current opponents (len(grp), n_fighters)
-            curr_opponent = self.opponent_id_mat[grp.index]
+            curr_opponent = opponent_id_mat[grp.index]
             # get the powers of the fighters (len(grp),)
             curr_fighter_powers = self._fighter_powers @ curr_fighter.T
             # get the powers of the opponents
@@ -143,8 +141,44 @@ class BaseEloEstimator(ABC):
             # 5. save the updated powers
             fitted_elo_df.loc[grp.index, "updated_fighter_elo"] = self._fighter_powers @ curr_fighter.T
             fitted_elo_df.loc[grp.index, "updated_opponent_elo"] = self._fighter_powers @ curr_opponent.T
-        self.elo_feature_df = fitted_elo_df
+        self.elo_feature_df = fitted_elo_df.drop(columns=["Date"])
         return fitted_elo_df
+    
+    def predict(self, test_df: pd.DataFrame):
+        # use predict_given_powers to predict on the test data
+        # needn't sort the test data by date or anything, since we're not
+        # updating the powers
+        test_df = test_df.copy() 
+        # transform the fighter ids into a (n_fights, n_fighters) matrix
+        fighter_id_mat = self.transform_fighter_ids(test_df["FighterID_espn"])
+        # transform the opponent ids into a (n_fights, n_fighters) matrix
+        opponent_id_mat = self.transform_fighter_ids(test_df["OpponentID_espn"])
+        # get the powers of the fighters (len(grp),)
+        curr_fighter_powers = self._fighter_powers @ fighter_id_mat.T
+        # get the powers of the opponents
+        curr_opponent_powers = self._fighter_powers @ opponent_id_mat.T
+        # any current features that we want to use
+        X = self.extract_features(test_df)
+        # 1. predict the target given the current powers
+        y_hat = self.predict_given_powers(
+            curr_fighter_powers, curr_opponent_powers, X
+        )
+        # 2. save the predictions
+        test_df["pred_elo_target"] = y_hat
+        # save fighter and opponent powers too, while we're at it
+        test_df["fighter_elo"] = curr_fighter_powers
+        test_df["opponent_elo"] = curr_opponent_powers
+        return test_df
+    
+    def fit_predict(self, train_df: pd.DataFrame, test_df: pd.DataFrame):
+        """
+        Fit the model on the training data and predict on the test data.
+        """
+        # fit on the training data
+        fitted_elo_df = self.fit(train_df)
+        # predict on the test data
+        test_df = self.predict(test_df)
+        return fitted_elo_df, test_df
 
 class RealEloEstimator(BaseEloEstimator):
     """ 
@@ -152,10 +186,6 @@ class RealEloEstimator(BaseEloEstimator):
     """
 
     def fit_initial_params(self, df: pd.DataFrame):
-        # # transform the fighter ids into a (n_fights, n_fighters) matrix
-        # self.fighter_id_mat = self.transform_fighter_ids(df["FighterID_espn"])
-        # # transform the opponent ids into a (n_fights, n_fighters) matrix
-        # self.opponent_id_mat = self.transform_fighter_ids(df["OpponentID_espn"])
         return None
     
     def predict_given_powers(self, fighter_elo:np.ndarray, opponent_elo:np.ndarray, X: np.ndarray) -> np.ndarray:
@@ -176,6 +206,8 @@ class BinaryEloEstimator(BaseEloEstimator):
     """
     Use this to estimate elo scores for {0,1}-valued outcomes.
     """
+    def fit_initial_params(self, df: pd.DataFrame):
+        return None
 
     def predict_given_powers(self, fighter_elo: np.ndarray, opponent_elo: np.ndarray, X: np.ndarray) -> np.ndarray:
         return expit(fighter_elo - opponent_elo)
