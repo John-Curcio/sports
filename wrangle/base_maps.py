@@ -54,6 +54,9 @@ MANUAL_ESPN_OVERWRITE_MAP = {
     # https://www.sherdog.com/fighter/Alex-Schoenauer-4000
     # https://www.tapology.com/fightcenter/fighters/alex-schoenauer
     "2951428": "2335745",
+
+    # caleb hall
+    '5085101': '5139608',
 }
 
 MANUAL_BFO_OVERWRITE_MAP = {
@@ -269,6 +272,7 @@ MANUAL_BFO_UFC_MAP = {
     "Orion-Cosce-10253": "2c010b26a3306969",
     "Blood-Diamond-13276": "9edf2c9082cc2cd8",
     
+    "Zarah-Fairn-Dos-Santos-7522": "862b0b3375aa4b6e",
 }
 
 MANUAL_BFO_ESPN_MAP = {
@@ -342,6 +346,8 @@ MANUAL_BFO_ESPN_MAP = {
     "Tyler-Flores-10228": "4010873",
     "Paulo-Laia-15272": "4870267",
     "Kaytlin-Neil-7549": "4244337",
+
+    "Sung-Bin-Jo-9183": "4422443",
 }
 
 MANUAL_THE_ODDS_ESPN_MAP = {
