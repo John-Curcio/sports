@@ -1,7 +1,10 @@
 import sqlite3
 import pandas as pd
+import os 
 
-HOME_DIR = "/Users/john/play/sports/"
+# get the full path to the directory this file is contained in
+# which is the root of this project
+HOME_DIR = os.path.dirname(os.path.realpath(__file__))
 
 class DbInterface(object):
     """
@@ -92,4 +95,4 @@ class DbInterface(object):
                 index=False
             )
 
-base_db_interface = DbInterface(db_name=HOME_DIR + "mma.db")
+base_db_interface = DbInterface(db_name=HOME_DIR + os.sep + "mma.db")
