@@ -2,13 +2,117 @@ import os
 import scrapy
 import sqlite3
 import datetime as dt
-from scrape_refactor.items import FighterBFSWrite
+# from scrape_refactor.items import FighterBFSWrite
+import urllib.parse
 
 ## worry about this later
 # db_mem = sqlite3.connect("file::memory:?cache=shared")
 # db_file.backup(db_mem)
 ## when you're done...
 # TODO: Move db stuff to new utility
+
+class EventScrape(scrapy.Spider):
+    name = "espn_fight_scrape"
+    db_path = "/Users/jai/Documents/code/sports/db/espn_fighters.db"
+    db = db_file = sqlite3.connect(db_path)
+    db_cur = db.cursor()
+    to_crawl_query_count = "SELECT COUNT(fighter_url) FROM espn_fighters WHERE last_crawled_iso_ts IS NULL;"
+    to_crawl_query = "SELECT fighter_url FROM espn_fighters WHERE last_crawled_iso_ts IS NULL;"
+    ## fighter_url
+
+    def start_requests(self):
+        counter = self.db_cur.execute(self.to_crawl_query_count)
+        counter_result = counter.fetchone()
+        print(f"TO SCRAPE: {counter_result[0]}")
+        query = self.db_cur.execute(self.to_crawl_query)
+        for row in query.fetchall():
+            url = row[0]
+            yield scrapy.Request(url=url, callback=self.parse)
+
+    def parse(self, response):
+        self.db_cur.execute("UPDATE espn_fighters SET last_crawled_iso_ts = ?,  page_html = ? WHERE fighter_url = ?", (dt.datetime.now().isoformat(), response.body, urllib.parse.unquote(response.url)))
+        self.db.commit()
+
+class ESPNSearch(scrapy.Spider):
+    name = "espn_fighter_search"
+    db_path = "/Users/jai/Documents/code/sports/db/espn_fighters.db"
+    db = db_file = sqlite3.connect(db_path)
+    db_cur = db.cursor()    
+
+    def db_exists(self):
+        is_created = os.path.isfile(self.db_path)
+        if not is_created:
+            return False
+        check_table = self.db_cur.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='espn_fighters';")
+        check_table_result = check_table.fetchone()
+        return check_table_result[0] != 0
+
+    def setup_db(self):
+        espn_fighter_db = sqlite3.connect(self.db_path)
+        cur = espn_fighter_db.cursor()
+        cur.execute("""
+        CREATE TABLE espn_fighters (
+            fighter_url text NOT NULL,
+            added_iso_ts text NOT NULL, --this is when it's added to the queue
+            last_crawled_iso_ts text, --this is when we started crawling
+            page_html text
+        );
+        """)
+        cur.execute(
+            """
+            CREATE UNIQUE INDEX idx_fighter_last_crawled_iso_ts 
+            ON espn_fighters (last_crawled_iso_ts);
+            """
+        )
+        # Create index to check if fighter has been added
+        cur.execute("""
+            CREATE UNIQUE INDEX idx_fighter_url 
+            ON espn_fighters (fighter_url);
+        """    
+        )
+
+    def start_requests(self):
+        if not self.db_exists():
+            self.setup_db()
+        urls = [
+        "https://www.espn.com/mma/fighters?search=a",
+        "https://www.espn.com/mma/fighters?search=b",
+        "https://www.espn.com/mma/fighters?search=c",
+        "https://www.espn.com/mma/fighters?search=d",
+        "https://www.espn.com/mma/fighters?search=e",
+        "https://www.espn.com/mma/fighters?search=f",
+        "https://www.espn.com/mma/fighters?search=g",
+        "https://www.espn.com/mma/fighters?search=h",
+        "https://www.espn.com/mma/fighters?search=i",
+        "https://www.espn.com/mma/fighters?search=j",
+        "https://www.espn.com/mma/fighters?search=k",
+        "https://www.espn.com/mma/fighters?search=l",
+        "https://www.espn.com/mma/fighters?search=m",
+        "https://www.espn.com/mma/fighters?search=n",
+        "https://www.espn.com/mma/fighters?search=o",
+        "https://www.espn.com/mma/fighters?search=p",
+        "https://www.espn.com/mma/fighters?search=q",
+        "https://www.espn.com/mma/fighters?search=r",
+        "https://www.espn.com/mma/fighters?search=s",
+        "https://www.espn.com/mma/fighters?search=t",
+        "https://www.espn.com/mma/fighters?search=u",
+        "https://www.espn.com/mma/fighters?search=v",
+        "https://www.espn.com/mma/fighters?search=w",
+        "https://www.espn.com/mma/fighters?search=x",
+        "https://www.espn.com/mma/fighters?search=y",
+        "https://www.espn.com/mma/fighters?search=z" 
+        ]
+        for url in urls:
+            yield scrapy.Request(url=url, callback=self.parse)
+
+    def parse(self, response):
+        all_urls = [_url.get() for _url in response.css('a::attr(href)')]
+        fighter_urls = [_url for _url in all_urls if "/mma/fighter/_/id/" in _url]
+        fighter_data = [
+            (f"https://www.espn.com{_url}", dt.datetime.now().isoformat(), None, None) for _url in fighter_urls
+        ]
+        self.db_cur.executemany("INSERT OR IGNORE INTO espn_fighters VALUES (?, ?, ?, ?)", fighter_data)
+        self.db.commit()
 
 class EventBFS(scrapy.Spider):
     name = "event_scrape"
@@ -24,7 +128,6 @@ class EventBFS(scrapy.Spider):
         counter_result = counter.fetchone()
         print(f"TO SCRAPE: {counter_result[0]}")
         query = self.db_cur.execute(self.to_crawl_query)
-        bfs_iter = 0
         for row in query.fetchall():
             url = row[0]
             yield scrapy.Request(url=url, callback=self.parse)
