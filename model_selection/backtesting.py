@@ -44,23 +44,29 @@ class TradingSimulator(object):
     fights from PortfolioManager's allocations. Record returns and 
     increment PortfolioManager's bankroll accordingly.
     """
-    def __init__(self, PortfolioManagerClass, fighter_ml_col, opponent_ml_col):
+    def __init__(self, portfolio_manager, fighter_ml_col, opponent_ml_col):
         self.fighter_ml_col = fighter_ml_col
         self.opponent_ml_col = opponent_ml_col
-        self.pm = PortfolioManagerClass(fighter_ml_col=fighter_ml_col, opponent_ml_col=opponent_ml_col)
+        self.pm = portfolio_manager
         self.returns_df = None
 
     def simulate_trading(self, pred_df, bet_ts_col="Date", payout_ts_col="Date"):
         """
         pred_df: pd.DataFrame with columns y_pred, win_target, 
             `fighter_ml_col`, `opponent_ml_col`, fight_id, FighterID_espn, 
-            OpponentID_espn, `bet_ts_col`, `payout_ts_col`
+            OpponentID_espn, `bet_ts_col`, `payout_ts_col`, win_target
         bet_ts_col: column of pred_df containing ts for when bets are placed
         payout_ts_col: column of pred_df containing ts for when bets are paid out
         """
+        pred_df = pred_df.drop_duplicates(subset=["fight_id"])
         self.pred_df = pred_df.assign(
             fighter_dec_odds=american_to_decimal_odds(pred_df[self.fighter_ml_col]),
             opponent_dec_odds=american_to_decimal_odds(pred_df[self.opponent_ml_col]),
+        )
+        # risk-free probabilities for each fighter. These should sum to >= 1
+        self.pred_df = self.pred_df.assign(
+            p_fighter_rf=1 / self.pred_df["fighter_dec_odds"],
+            p_opponent_rf=1 / self.pred_df["opponent_dec_odds"],
         )
         self.bet_ts_col = bet_ts_col
         self.payout_ts_col = payout_ts_col
@@ -71,9 +77,9 @@ class TradingSimulator(object):
         Simulates trading over all tses in `pred_df`.
         """
         returns_df_list = []
-        ts_range = pd.date_range(
-            start=self.pred_df[self.bet_ts_col].min(),
-            end=self.pred_df[self.payout_ts_col].max(),
+        ts_range = sorted(
+            set(self.pred_df[self.bet_ts_col].unique()) |
+            set(self.pred_df[self.payout_ts_col].unique())
         )
         for curr_ts in ts_range:
             # TODO this block is extremely confusing because it's not
@@ -81,30 +87,33 @@ class TradingSimulator(object):
             # some kind of standardization.
 
             # Get upcoming fights to bet on
-            upcoming_df = self._get_upcoming_fights(curr_ts)
+            upcoming_fights_df = self._get_upcoming_fights(curr_ts)
             # Bet on upcoming fights
-            self.pm.place_bets(upcoming_df)
+            self.pm.place_bets(upcoming_fights_df)
             # Get completed fights
-            completed_fights = self._get_completed_fights(curr_ts)
+            completed_fights_df = self._get_completed_fights(curr_ts)
             # Get portfolio weights
-            stake_df = self.pm.get_stakes(completed_fights)
+            stake_df = self.pm.get_stakes(completed_fights_df)
             # Get returns
-            return_df = self._get_returns(completed_fights, stake_df)
+            return_df = self._get_returns(completed_fights_df, stake_df)
             returns_df_list.append(return_df)
             # Update bankroll
             self.pm.update_bankroll_with_returns(return_df)
+            # Add one more helpful column to return_df
+            return_df["final_portfolio_value"] = self.pm.portfolio.portfolio_value
         self.returns_df = pd.concat(returns_df_list).reset_index(drop=True)
+        return self.returns_df
     
     def _get_upcoming_fights(self, curr_ts):
         """
         Returns upcoming fights for `curr_ts`.
         Subset of pred_df
         """
-        upcoming_df = self.pred_df[
+        upcoming_fights_df = self.pred_df[
             (self.pred_df[self.bet_ts_col] == curr_ts) &
             (self.pred_df[self.payout_ts_col] >= curr_ts)
         ]
-        return upcoming_df
+        return upcoming_fights_df
     
     def _get_completed_fights(self, curr_ts):
         """
@@ -156,6 +165,7 @@ class TradingSimulator(object):
             "fight_id", "FighterID_espn", "OpponentID_espn", 
             self.fighter_ml_col, self.opponent_ml_col,
             "fighter_dec_odds", "opponent_dec_odds",
+            "p_fighter_rf", "p_opponent_rf",
             "fighter_stake", "opponent_stake",
             "p_bankroll_fighter", "p_bankroll_opponent",
             "fighter_possible_collect", "opponent_possible_collect",
@@ -165,31 +175,49 @@ class TradingSimulator(object):
             # payout_ts_col and bet_ts_col could be the same
             *{self.payout_ts_col, self.bet_ts_col}
         ]]
+    
+    def plot_diagnostics(self):
+        """
+        Plot portfolio value over time.
+        """
+        return_df = self.returns_df
+        x_col = self.payout_ts_col
+        event_return_df = return_df.groupby(x_col)["final_portfolio_value"].max()\
+            .reset_index()\
+            .rename(columns={"final_portfolio_value": "portfolio_value"})
+        sns.lineplot(
+            x=x_col, y="portfolio_value",
+            data=event_return_df
+        )
+        growth_rates = event_return_df["portfolio_value"].pct_change().dropna()
+        harmonic_avg_growth_rate = 1 / np.mean(1 / (1 + growth_rates))
+        harmonic_avg_return = harmonic_avg_growth_rate - 1
+        plt.title("Portfolio value over time - assume returns compound by %s\
+\nharmonic average return: %.4f"%(x_col, harmonic_avg_return))
+        plt.xticks(rotation=45)
+        plt.show()
 
 
 class Portfolio(object):
     """
     Class for keeping track of the actual portfolio itself.
     Basically just a wrapper around a pandas dataframe, with 
-    an extra attribute for cash holdings
+    an extra attribute for cash holdings.
+    Doesn't do any of the actual bet selection, nor does it track the
+    portfolio holdings over time, just keeps track of
+    the current state of the portfolio.
     """
 
     def __init__(self, initial_bankroll = 1):
         self.cash = initial_bankroll
+        self.portfolio_value = initial_bankroll
         self.data = pd.DataFrame([], columns=[
             "fight_id", "FighterID_espn", "OpponentID_espn",
             "fighter_stake", "opponent_stake",
             "p_bankroll_fighter", "p_bankroll_opponent",
             "fighter_dec_odds", "opponent_dec_odds",
+            "p_fighter_rf", "p_opponent_rf",
         ])
-
-    def add_bet(self, row):
-        """
-        row: pd.Series or dict with columns fight_id, FighterID_espn, OpponentID_espn,
-            fighter_stake, opponent_stake, fighter_dec_odds, opponent_dec_odds
-        """
-        self.data = self.data.append(row, ignore_index=True)
-        self.cash -= row["fighter_stake"] + row["opponent_stake"]
 
     def del_bet(self, fight_id, fighter_id, opponent_id):
         # drop row with fight_id, fighter_id, opponent_id
@@ -211,43 +239,34 @@ class Portfolio(object):
             df[self.data.columns],
         ]).reset_index(drop=True)
         assert self.data["fight_id"].nunique() == self.data.shape[0]
-        # self.data = df[["fight_id", "FighterID_espn", "OpponentID_espn",
-        #          "fighter_stake", "opponent_stake",
-        #          "fighter_dec_odds", "opponent_dec_odds"]].merge(
-        #     self.data,
-        #     on=["fight_id", "FighterID_espn", "OpponentID_espn"],
-        #     how="outer"
-        # )
         assert self.data.shape[0] == prev_portfolio_shape[0] + df.shape[0]
         # update bankroll
         self.cash -= (df["fighter_stake"] + df["opponent_stake"]).sum()
 
-    def update_bankroll_with_returns(self, df):
+    def update_bankroll_with_returns(self, return_df):
         """
         Update portfolio after a fight has been completed.
         """
         # get portfolio rows matching fight_id, fighter_id, opponent_id
         # by merging df with self.data
-        df = df[["fight_id", "FighterID_espn", "OpponentID_espn",
-                #  "fighter_dec_odds", "opponent_dec_odds",
-                 "win_target"]].merge(
+        return_df = return_df[["fight_id", "FighterID_espn", "OpponentID_espn",
+                 "fighter_profit", "opponent_profit"]].merge(
             self.data,
             on=["fight_id", "FighterID_espn", "OpponentID_espn"],
             how="inner"
         )
-        # calculate profit
-        fighter_profit = df["fighter_stake"] * df["fighter_dec_odds"] * df["win_target"]
-        opponent_profit = df["opponent_stake"] * df["opponent_dec_odds"] * (1 - df["win_target"])
         # update bankroll
-        self.cash += (fighter_profit + opponent_profit).sum()
+        self.cash += return_df[["fighter_profit", "opponent_profit", 
+                                "fighter_stake", "opponent_stake"]].sum().sum()
+        self.portfolio_value += return_df[["fighter_profit", "opponent_profit"]].sum().sum()
         # delete row
         prev_portfolio_shape = self.data.shape
-        for _, row in df.iterrows():
+        for _, row in return_df.iterrows():
             fight_id = row["fight_id"]
             fighter_id = row["FighterID_espn"]
             opponent_id = row["OpponentID_espn"]
             self.del_bet(fight_id, fighter_id, opponent_id)
-        assert self.data.shape[0] == prev_portfolio_shape[0] - df.shape[0]
+        assert self.data.shape[0] == prev_portfolio_shape[0] - return_df.shape[0]
 
 
 class PortfolioManager(ABC):
@@ -256,14 +275,15 @@ class PortfolioManager(ABC):
     Maintain a portfolio of bets, and update it as new bets are made
     and old bets are paid out.
     """
-    def __init__(self, fighter_ml_col="FighterOpen", opponent_ml_col="OpponentOpen"):
+    def __init__(self, fighter_ml_col="FighterOpen", opponent_ml_col="OpponentOpen",
+                 initial_bankroll=1):
         """
         fighter_ml_col: column of pred_df containing money line for fighter
         opponent_ml_col: column of pred_df containing money line for opponent
         """
         self.fighter_ml_col = fighter_ml_col
         self.opponent_ml_col = opponent_ml_col
-        self.portfolio = Portfolio()
+        self.portfolio = Portfolio(initial_bankroll=initial_bankroll)
 
     @abstractmethod
     def calculate_bets(self, upcoming_df):
@@ -279,8 +299,8 @@ class PortfolioManager(ABC):
         # set columns fighter_stake, opponent_stake,
         # p_bankroll_fighter, p_bankroll_opponent
         upcoming_df = self.calculate_bets(upcoming_df)
-        upcoming_df["p_bankroll_fighter"] = upcoming_df["fighter_stake"] / self.portfolio.cash
-        upcoming_df["p_bankroll_opponent"] = upcoming_df["opponent_stake"] / self.portfolio.cash
+        upcoming_df["p_bankroll_fighter"] = upcoming_df["fighter_stake"] / self.portfolio.portfolio_value
+        upcoming_df["p_bankroll_opponent"] = upcoming_df["opponent_stake"] / self.portfolio.portfolio_value
         self.portfolio.update_portfolio_with_bets(upcoming_df)
 
     def get_stakes(self, df=None):
@@ -299,6 +319,47 @@ class PortfolioManager(ABC):
 
     def update_bankroll_with_returns(self, df):
         self.portfolio.update_bankroll_with_returns(df)
+
+class MultiKellyPortfolioManager(PortfolioManager):
+
+    def __init__(self, max_bankroll_fraction=1, *args, **kwargs):
+        """
+        max_bankroll_fraction: maximum % of bankroll to risk on any one fight
+        """
+        super().__init__(*args, **kwargs)
+        self.max_bankroll_fraction = max_bankroll_fraction
+
+    def calculate_bets(self, upcoming_df):
+        """
+        upcoming_df: pd.DataFrame with fight_id, FighterID_espn, OpponentID_espn,
+            fighter_ml_col, opponent_ml_col, y_pred
+        returns pd.DataFrame with fight_id, FighterID_espn, OpponentID_espn,
+            fighter_stake, opponent_stake
+        """
+        p_fighter = upcoming_df["y_pred"]
+        p_opponent = 1 - p_fighter
+        b_fighter = upcoming_df["fighter_dec_odds"] - 1
+        b_opponent = upcoming_df["opponent_dec_odds"] - 1
+        kelly_bet_fighter = np.maximum(0, p_fighter - (p_opponent / b_fighter))
+        kelly_bet_opponent = np.maximum(0, p_opponent - (p_fighter / b_opponent))
+
+        # i want to check that i'm never betting on both guys
+        check_vec = (kelly_bet_fighter > 0) & (kelly_bet_opponent > 0)
+        assert not check_vec.any()
+
+        # size bets proportional to kelly criterion for one bet
+        n_bets = (kelly_bet_fighter > 0).sum() + (kelly_bet_opponent > 0).sum()
+        fighter_bet = np.minimum(self.max_bankroll_fraction, 
+                                 kelly_bet_fighter / n_bets).fillna(0)
+        opponent_bet = np.minimum(self.max_bankroll_fraction, 
+                                  kelly_bet_opponent / n_bets).fillna(0)
+        # again, check that i'm never betting on both guys
+        assert fighter_bet.sum() + opponent_bet.sum() < 1
+        return upcoming_df.assign(
+            fighter_stake=fighter_bet * self.portfolio.cash,
+            opponent_stake=opponent_bet * self.portfolio.cash,
+        )
+
 
 
 class MultiKellyPM(object):
@@ -408,7 +469,7 @@ class MultiKellyPM(object):
         avg_return = event_return_df["return"].mean()
         plt.title("Portfolio value over time - assume returns compound by %s\
 \naverage return: %.4f"%(x_col, avg_return))
-        plt.xs(rotation=45)
+        plt.xticks(rotation=45)
         plt.show()
 
 
