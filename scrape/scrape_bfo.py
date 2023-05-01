@@ -238,6 +238,8 @@ class EventScraper(BaseBfoPageScraper):
             prop_df["EventHref"] = self.url[len("https://www.bestfightodds.com/events/"):]
         fight_df["match_id"] = fight_df.index//2
         fight_df["EventHref"] = self.url[len("https://www.bestfightodds.com/events/"):]
+        fighter_urls = self.get_fighter_urls()
+        fight_df["FighterHref"] = pd.Series(fighter_urls).str[len("https://www.bestfightodds.com/fighters/"):]
         self.fight_odds_df = fight_df
         self.prop_odds_df = prop_df
         return fight_df, prop_df
