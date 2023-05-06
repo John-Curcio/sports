@@ -26,7 +26,9 @@ Notes:
 
 # import numpy as np 
 import pandas as pd 
-from model.mma_elo_model import RealEloEstimator, BinaryEloEstimator, AccEloEstimator
+from model.mma_elo_model import RealEloEstimator, BinaryEloEstimator, \
+    AccEloEstimator, BinaryEloErrorEstimator
+from model.mma_coop_model import RealCoopEstimator, BinaryCoopEstimator
 from sklearn.decomposition import PCA
 from scipy.special import expit, logit
 from abc import ABC, abstractmethod
@@ -122,6 +124,22 @@ class RealEloWrapper(BaseEloWrapper):
 
 class BinaryEloWrapper(BaseEloWrapper):
     estimator_class = BinaryEloEstimator
+
+class RealCoopWrapper(BaseEloWrapper):
+    estimator_class = RealCoopEstimator
+
+class BinaryCoopWrapper(BaseEloWrapper):
+    estimator_class = BinaryCoopEstimator
+
+class BinaryEloErrorWrapper(BaseEloWrapper):
+
+    def __init__(self, elo_alphas, init_score_col):
+        self.elo_alphas = elo_alphas
+        self.init_score_col = init_score_col
+        self.fitted_elo_estimators = dict()
+        self.estimator_class = lambda target_col, alpha: BinaryEloErrorEstimator(
+            target_col=target_col, alpha=alpha, init_score_col=init_score_col
+        )
             
 class PcaEloWrapper(RealEloWrapper):
     
