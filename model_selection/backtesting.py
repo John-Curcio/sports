@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt 
 import seaborn as sns 
 from abc import ABC, abstractmethod
+from tqdm import tqdm
 
 from sklearn.metrics import log_loss, accuracy_score
 
@@ -81,7 +82,7 @@ class TradingSimulator(object):
             set(self.pred_df[self.bet_ts_col].unique()) |
             set(self.pred_df[self.payout_ts_col].unique())
         )
-        for curr_ts in ts_range:
+        for curr_ts in tqdm(ts_range):
             # TODO this block is extremely confusing because it's not
             # clear what the columns are for each df. Ought to enforce
             # some kind of standardization.
@@ -222,8 +223,8 @@ class Portfolio(object):
     def del_bet(self, fight_id, fighter_id, opponent_id):
         # drop row with fight_id, fighter_id, opponent_id
         self.data = self.data[
-            (self.data["fight_id"] != fight_id) &
-            (self.data["FighterID_espn"] != fighter_id) &
+            (self.data["fight_id"] != fight_id) |
+            (self.data["FighterID_espn"] != fighter_id) |
             (self.data["OpponentID_espn"] != opponent_id)
         ]
 
@@ -266,7 +267,13 @@ class Portfolio(object):
             fighter_id = row["FighterID_espn"]
             opponent_id = row["OpponentID_espn"]
             self.del_bet(fight_id, fighter_id, opponent_id)
-        assert self.data.shape[0] == prev_portfolio_shape[0] - return_df.shape[0]
+        # check that portfolio shape is correct. We should be deleting
+        # fights that were in our portfolio that have now been paid out.
+        if self.data.shape[0] != prev_portfolio_shape[0] - return_df.shape[0]:
+            print("self.data.shape[0]: %s, prev_portfolio_shape[0]: %s, return_df.shape[0]: %s"%(
+                self.data.shape[0], prev_portfolio_shape[0], return_df.shape[0]
+            ))
+            assert False
 
 
 class PortfolioManager(ABC):
