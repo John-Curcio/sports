@@ -14,9 +14,9 @@ class BaseEloEstimator(ABC):
     """
     Abstract Base class for Elo estimators.
     Requires a few methods to be implemented:
-    - update_powers
     - predict_given_powers
     - fit_initial_params
+    - get_elo_update
     """
 
     def __init__(self, target_col, alpha=0.5):

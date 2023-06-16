@@ -10,13 +10,14 @@ class TimeSeriesCrossVal(object):
 
     def __init__(self, n_splits=4, n_dates_per_fold=None, 
                  min_test_date=None, p_fighter_implied_col="p_fighter_implied",
-                 test_date_col="Date"):
+                 test_date_col="Date", verbose=True):
         self.n_splits = n_splits
         self.n_dates_per_fold = n_dates_per_fold
         self.min_test_date = min_test_date
         self.p_fighter_implied_col = p_fighter_implied_col
         self.test_date_col = test_date_col
         self.fold_pred_df = None
+        self.verbose = verbose
 
     def get_folds(self, df):
         dates = sorted(df[self.test_date_col].unique())
@@ -42,9 +43,10 @@ class TimeSeriesCrossVal(object):
         fold_pred_df_list = [] 
         for i, test_df in enumerate(self.get_folds(df)):
             if len(train_df) > 0:
-                print("training on date range:", 
-                      train_df[self.test_date_col].dt.date.min(), 
-                      train_df[self.test_date_col].dt.date.max())
+                if self.verbose:
+                    print("training on date range:", 
+                        train_df[self.test_date_col].dt.date.min(), 
+                        train_df[self.test_date_col].dt.date.max())
                 y_pred = model.fit_predict(train_df, test_df)
                 y_pred_df = test_df.assign(
                     y_pred=y_pred,
