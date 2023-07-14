@@ -6,12 +6,16 @@ import time
 
 if __name__ == "__main__":
     start = time.time()
+    print(f"2 Iter TIME: {time.time() - start}s")
     print("--- scrape bestfightodds data ---")
     scrape_bfo.main()
+    print(f"BFO TIME: {time.time() - start}s")
     print("--- scrape espn data ---")
     scrape_espn.main()
+    print(f"ESPN TIME: {time.time() - start}s")
     print("--- scrape ufcstats data ---")
     scrape_ufcstats.main()
+    print(f"UFC STATS TIME: {time.time() - start}s")
     print("--- done! ---")
     espn_df = base_db_interface.read("espn_matches")
     print("ESPN DF SHAPE: ", espn_df.shape)

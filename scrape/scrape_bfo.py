@@ -44,15 +44,17 @@ class BfoRequest(object):
         self.url = url
         self.max_tries = max_tries
         self.sleep_time = sleep_time
+        self.session = requests.Session()
         self.raw_html = None
         
     def get_request(self):
         for i in range(self.max_tries):
-            r = requests.get(self.url, headers=headers)
-            r.close()
+            r = self.session.get(self.url, headers=headers)
             if not r.text.startswith("Error "):
                 # great, we got a legit response
                 break
+            else:
+                r.close()
             # sleep for sleep_time
             print("{} gave us an Error 0, retrying in {} seconds".format(self.url, self.sleep_time))
             time.sleep(self.sleep_time)
@@ -466,8 +468,8 @@ class BfoOddsScraper(object):
 
 
 def main():
-    # max_iters = 2
-    max_iters = np.inf
+    max_iters = 1
+    # max_iters = np.inf
     bfo = BfoOddsScraper(max_iters=max_iters)
     bfo.scrape_and_write_all_urls()
     # bfo.load_urls()
