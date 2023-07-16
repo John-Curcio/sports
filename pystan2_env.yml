@@ -15,6 +15,7 @@ dependencies:
   - statsmodels
   - scikit-learn
   - scipy
+  - scrapy
   # - conda-forge::pystan
   - gpytorch
   - bs4
