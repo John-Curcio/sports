@@ -2,6 +2,7 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver import FirefoxOptions
 import time
 from bs4 import BeautifulSoup
 import pandas as pd
@@ -48,8 +49,11 @@ class BetwayScraper(object):
             "https://dk-bwnjsports.betway.com/sports/mma/bellator/",
         ]
     
-    def init_driver(self, url):
-        self.driver = webdriver.Firefox()
+    def init_update_driver(self, url):
+        if self.driver is None:
+            opts = FirefoxOptions()
+            opts.add_argument("--headless")
+            self.driver = webdriver.Firefox(options=opts)
         self.driver.get(url)
         WebDriverWait(self.driver, 10).until(EC.presence_of_element_located((By.CLASS_NAME, "rj-ev-list__bet-btn__inner ")))
 
@@ -62,14 +66,14 @@ class BetwayScraper(object):
         """
         df = []
         for url in self.league_urls:
-            self.init_driver(url)
+            self.init_update_driver(url)
             # check if the driver gets redirected
             if self.driver.current_url == url:
                 # df.append(self.scrape_league())
                 df.append(self.scroll_and_scrape())
             else:
                 print("Redirected to {}".format(self.driver.current_url))
-            self.close_driver()
+        self.close_driver()
         return pd.concat(df).reset_index(drop=True).drop_duplicates()
     
     def scroll_and_scrape(self, scroll_height=1000, scroll_pause_time=0.5):
@@ -141,7 +145,7 @@ class DbInterface(object):
 def scrape_and_write():
     scraper = BetwayScraper()
     data = scraper.scrape_all_leagues()
-    db = DbInterface("market_odds.db")
+    db = DbInterface("/home/ubuntu/scrape/market_odds.db")
     db.init_table_if_not_exists()
     db.insert_data(data)
     db.close()
