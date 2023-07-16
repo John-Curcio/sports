@@ -381,6 +381,7 @@ class BfoOddsScraper(object):
 
     def scrape_and_write_all_urls(self):
         root_urls = self.get_root_urls()
+        # TODO add multiprocessing
         for root_url in root_urls:
             bfs = FighterBFS(root_url, max_iters=self.max_iters)
             bfs.fighter_urls_seen = self.fighter_urls_seen
@@ -526,8 +527,8 @@ class BfoOddsScraper(object):
 
 
 def main():
-    max_iters = 1
-    # max_iters = np.inf
+    # max_iters = 1
+    max_iters = np.inf
     bfo = BfoOddsScraper(max_iters=max_iters)
     # bfo.scrape_and_write_all_urls()
     bfo.load_urls()
