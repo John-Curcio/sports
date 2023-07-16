@@ -57,7 +57,7 @@ class BaseStanModel(object):
     def _load_stan_model(self):
         # persistent hash: https://stackoverflow.com/a/2511075
         code_hash = int(hashlib.md5(self.code.encode('ascii')).hexdigest(), 16)
-        path = f"{HOME_DIR}stan_builds/{code_hash}.pkl"
+        path = f"{HOME_DIR}/stan_builds/{code_hash}.pkl"
         try:
             with open(path, 'rb') as f:
                 self.stan_model = pickle.load(f)

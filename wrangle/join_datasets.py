@@ -459,6 +459,10 @@ def load_espn_df():
             (espn_df["OpponentID"] == fighter_id)
         )
     espn_df = espn_df.loc[~drop_fight_inds]
+    # Some espn IDs correspond to the same guy
+    to_replace, value = zip(*MANUAL_ESPN_OVERWRITE_MAP.items())
+    espn_df["FighterID"] = espn_df["FighterID"].replace(to_replace, value)
+    espn_df["OpponentID"] = espn_df["OpponentID"].replace(to_replace, value)
     # Fighter history may be split btw two IDs
     return espn_df
 
@@ -721,6 +725,43 @@ def find_bfo_ufc_mapping():
         bfo_to_ufc_map,
     )
 
+def join_upcoming_fights(bfo_df, ufc_df):
+    """
+    Find mapping between BFO data to UFC data. These are the only
+    two datasets that have upcoming fights.
+    Filter down to upcoming fights, then get ESPN FighterIDs for
+    each fighter in the upcoming fights.
+    """
+    bfo_to_ufc_map = base_db_interface.read("bfo_to_ufc_map")
+    ufc_to_espn_map = base_db_interface.read("ufc_to_espn_map")
+    ufc_df = ufc_df.rename(columns={
+        "FighterID": "FighterID_ufc",
+        "OpponentID": "OpponentID_ufc",
+    }).merge(
+        ufc_to_espn_map,
+        on=["FighterID_ufc", "OpponentID_ufc", "Date"],
+        how="inner",
+    )
+    # join bfo data
+    bfo_ufc_df = bfo_df.rename(columns={
+        "FighterID": "FighterID_bfo",
+        "OpponentID": "OpponentID_bfo",
+    }).merge(
+        bfo_to_ufc_map,
+        on=["FighterID_bfo", "OpponentID_bfo", "Date"],
+        how="inner",
+    )
+    upcoming_df = ufc_df.query("is_upcoming == 1").merge(
+        bfo_ufc_df,
+        on=["FighterID_ufc", "OpponentID_ufc", "Date"],
+        how="inner"
+    )
+    print(upcoming_df.shape)
+    base_db_interface.write_replace(
+        "bfo_ufc_upcoming_fights",
+        upcoming_df
+    )
+
 def join_bfo_espn_ufc(bfo_df, espn_df, ufc_df):
     """
     After we've found the mapping between BFO and ESPN data, as well as 
@@ -751,6 +792,8 @@ def join_bfo_espn_ufc(bfo_df, espn_df, ufc_df):
         suffixes=("","_ufc")
     )
     # don't forget about upcoming fights!
+    # TODO this block doesn't make any sense. This right join is not
+    # doing anything, because none of the fights in espn_df are upcoming
     upcoming_espn_ufc_df = espn_df.merge(
         ufc_df.query("is_upcoming == 1"),
         on=["FighterID_espn", "OpponentID_espn", "Date"],
@@ -890,6 +933,13 @@ def final_clean_step():
     ).drop(columns=["p_stats_null"])
     print("joined_df.shape after dropping duplicated opening money lines:", joined_df.shape)
     base_db_interface.write_replace(
-        "clean_bfo_espn_ufc_data",
+        "clean_bfo_espn_ufc_data_plus",
         joined_df,
     )
+    # append upcoming fights
+    # upcoming_df = base_db_interface.read("bfo_ufc_upcoming_fights")
+    # joined_df = pd.concat([joined_df, upcoming_df]).reset_index()
+    # base_db_interface.write_replace(
+    #     "clean_bfo_espn_ufc_data_plus_upcoming",
+    #     joined_df,
+    # )

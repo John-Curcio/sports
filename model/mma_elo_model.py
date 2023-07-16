@@ -14,9 +14,9 @@ class BaseEloEstimator(ABC):
     """
     Abstract Base class for Elo estimators.
     Requires a few methods to be implemented:
-    - update_powers
     - predict_given_powers
     - fit_initial_params
+    - get_elo_update
     """
 
     def __init__(self, target_col, alpha=0.5):
@@ -221,6 +221,38 @@ class BinaryEloEstimator(BaseEloEstimator):
         delta = 0.25 * self.alpha * (y_true - y_hat)
         delta[np.isnan(delta)] = 0
         return (delta, -1 * delta)
+    
+class BinaryEloErrorEstimator(BinaryEloEstimator):
+    """
+    Use this to estimate elo scores for {0,1}-valued outcomes,
+    predicting errors in another column's predictions.
+    """
+    def __init__(self, target_col: str, init_score_col: str, alpha: float = 0.5):
+        """
+        Parameters
+        ----------
+        target_col : str
+            The column containing the target variable.
+        init_score_col : str
+            The column containing the initial predictions, similar to lightGBM's
+            init_score parameter. This is the column that we'll be predicting
+            errors in. Assume init_score_col is a logit (i.e. it's on the
+            log-odds scale).
+        alpha : float, optional
+            The learning rate, by default 0.5
+        """
+        super().__init__(target_col, alpha)
+        self.init_score_col = init_score_col
+
+    def extract_features(self, df: pd.DataFrame) -> np.ndarray:
+        """
+        Extract the initial scores from the dataframe.
+        """
+        return df[self.init_score_col].values
+
+    def predict_given_powers(self, fighter_elo: np.ndarray, opponent_elo: np.ndarray, X: np.ndarray) -> np.ndarray:
+        return expit(X + fighter_elo - opponent_elo)
+    
 
 class AccEloEstimator(object):
     

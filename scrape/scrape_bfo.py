@@ -158,7 +158,8 @@ class EventScraper(BaseBfoPageScraper):
     def __init__(self, url, **request_kwargs):
         super().__init__(url, **request_kwargs)
         self.fighter_urls = None
-        self.odds_df = None
+        self.fight_odds_df = None
+        self.prop_odds_df = None
         self.prop_html = None
         
     def get_html(self):
@@ -186,14 +187,64 @@ class EventScraper(BaseBfoPageScraper):
     def get_odds(self):
         if self.data is None:
             self.get_html()
-        odds_df_rows = []
-        odds_df = self.tables[1].dropna(subset=["Props.1"]).reset_index(drop=True)
+        fight_df_rows = []
+        prop_df_rows = []
+
+        odds_df = self.tables[1]
         odds_df = odds_df.rename(columns={"Unnamed: 0": "FighterName"})
-        odds_df["match_id"] = odds_df.index//2
+        # odds_df currently contains the odds for all fights on the card,
+        # including the props. We need to split this into two dataframes:
+        # one for the fights, and one for the props.
+        # we do this by sliding window: if the next two rows have nulls in the
+        # "Props.1" column, then we know these rows correspond to a fight, and 
+        # the following rows correspond to props. The contents of the "Props.1"
+        # column tell us how many props there are.
+        i = 0
+        while i < odds_df.shape[0]:
+            nprops0 = odds_df["Props.1"].iloc[i]
+            nprops1 = odds_df["Props.1"].iloc[i+1]
+            if odds_df["Props.1"].iloc[i:(i+2)].isnull().all():
+                # this is a fight without props
+                fight_df_rows.append(odds_df.iloc[i:(i+2)])
+                i += 2  
+            elif odds_df["Props.1"].iloc[i:(i+2)].notnull().all():
+                # this is a fight with props
+                fight_df_rows.append(odds_df.iloc[i:(i+2)])
+                prop_df_rows.append(
+                    odds_df.iloc[(i+2):(i+2+2*int(nprops0))].rename(columns={
+                        "FighterName": "PropName",
+                    }).assign(
+                        FighterName=odds_df["FighterName"].iloc[i],
+                        OpponentName=odds_df["FighterName"].iloc[i+1],
+                    )
+                )
+                i += 2 + 2*int(nprops0)
+            elif odds_df["FighterName"].iloc[i] == "Event props":
+                # The remaining rows are for the entire event
+                prop_df_rows.append(
+                    odds_df.iloc[(i+1):].rename(columns={
+                        "FighterName": "PropName",
+                    }).assign(
+                        FighterName="Event",
+                        OpponentName="Event",
+                    )
+                )
+                i = odds_df.shape[0]
+            else:
+                raise ValueError("nprops0 != nprops1", i, nprops0, nprops1)
+
+        fight_df = pd.concat(fight_df_rows).reset_index(drop=True)
+        prop_df = pd.DataFrame()
+        if len(prop_df_rows) > 0:
+            prop_df = pd.concat(prop_df_rows).reset_index(drop=True)
+            prop_df["EventHref"] = self.url[len("https://www.bestfightodds.com/events/"):]
+        fight_df["match_id"] = fight_df.index//2
+        fight_df["EventHref"] = self.url[len("https://www.bestfightodds.com/events/"):]
         fighter_urls = self.get_fighter_urls()
-        odds_df["FighterHref"] = pd.Series(fighter_urls).str[len("https://www.bestfightodds.com/fighters/"):]
-        odds_df["EventHref"] = self.url[len("https://www.bestfightodds.com/events/"):]
-        return odds_df
+        fight_df["FighterHref"] = pd.Series(fighter_urls).str[len("https://www.bestfightodds.com/fighters/"):]
+        self.fight_odds_df = fight_df
+        self.prop_odds_df = prop_df
+        return fight_df, prop_df
     
     def get_prop_html(self):
         """
@@ -384,17 +435,19 @@ class BfoOddsScraper(object):
     #     return None
 
     def get_event_odds(self, urls):
-        odds_df_list = []
+        fight_odds_df_list = []
+        prop_odds_df_list = []
         for url in urls:
             print("scraping closing odds from {}".format(url))
             try:
                 scraper = EventScraper(url)
-                odds_df = scraper.get_odds()
-                odds_df_list.append(odds_df)
+                fight_odds_df, prop_odds_df = scraper.get_odds()
+                fight_odds_df_list.append(fight_odds_df)
+                prop_odds_df_list.append(prop_odds_df)
             except:
-                print("couldn't scrape odds from {}".format(url))
-                continue 
-        return pd.concat(odds_df_list)
+                print("!!! couldn't scrape odds from {}".format(url))
+                continue
+        return pd.concat(fight_odds_df_list), pd.concat(prop_odds_df_list)
     
     def get_event_prop_html(self, urls):
         """
@@ -408,7 +461,7 @@ class BfoOddsScraper(object):
                 scraper = EventScraper(url)
                 html_df_list.append(scraper.get_prop_table())
             except:
-                print("couldn't scrape prop html from {}".format(url))
+                print("!!! couldn't scrape prop html from {}".format(url))
                 continue
         return pd.concat(html_df_list)
 
@@ -421,7 +474,7 @@ class BfoOddsScraper(object):
                 fs = FighterScraper(url)
                 odds_df_list.append(fs.get_odds())
             except:
-                print("Couldn't scrape odds for {}".format(url))
+                print("!!! Couldn't scrape odds for {}".format(url))
                 continue
         return pd.concat(odds_df_list)
 
@@ -448,11 +501,16 @@ class BfoOddsScraper(object):
     def scrape_and_write_closing_odds(self, url_df=None):
         if url_df is None:
             url_df = pd.DataFrame(self.event_urls_seen, columns=["url"])
-        odds_df = self.get_event_odds(url_df["url"])
-        print("writing {} rows to db".format(len(odds_df)))
+        fight_odds_df, prop_odds_df = self.get_event_odds(url_df["url"])
+        print("writing {} rows to db".format(len(fight_odds_df)))
         base_db_interface.write_replace(
             table_name="bfo_event_odds",
-            df=odds_df,
+            df=fight_odds_df,
+        )
+        print("writing {} rows to db".format(len(prop_odds_df)))
+        base_db_interface.write_replace(
+            table_name="bfo_prop_odds",
+            df=prop_odds_df,
         )
 
     def scrape_and_write_prop_html(self, url_df=None):
@@ -471,10 +529,10 @@ def main():
     max_iters = 1
     # max_iters = np.inf
     bfo = BfoOddsScraper(max_iters=max_iters)
-    bfo.scrape_and_write_all_urls()
-    # bfo.load_urls()
-    bfo.scrape_and_write_opening_odds()
-    bfo.scrape_and_write_prop_html()
+    # bfo.scrape_and_write_all_urls()
+    bfo.load_urls()
+    # bfo.scrape_and_write_opening_odds()
+    # bfo.scrape_and_write_prop_html()
     bfo.scrape_and_write_closing_odds()
     print("done!")
     

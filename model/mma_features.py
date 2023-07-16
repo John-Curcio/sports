@@ -26,7 +26,12 @@ Notes:
 
 # import numpy as np 
 import pandas as pd 
-from model.mma_elo_model import RealEloEstimator, BinaryEloEstimator, AccEloEstimator
+from model.mma_elo_model import RealEloEstimator, BinaryEloEstimator, \
+    AccEloEstimator, BinaryEloErrorEstimator
+from model.mma_coop_model import RealCoopEstimator, BinaryCoopEstimator
+# from model.exact_elo_model import RealExactEloEstimator, BinaryExactEloEstimator, \
+#     RealExactEloErrorEstimator, BinaryExactEloErrorEstimator
+from model.exact_elo_model import RealFighterPowerEstimator, BinaryFighterPowerEstimator
 from sklearn.decomposition import PCA
 from scipy.special import expit, logit
 from abc import ABC, abstractmethod
@@ -122,6 +127,145 @@ class RealEloWrapper(BaseEloWrapper):
 
 class BinaryEloWrapper(BaseEloWrapper):
     estimator_class = BinaryEloEstimator
+
+class BaseFighterPowerWrapper(BaseEloWrapper):
+    # Use the same signature as the BaseEloWrapper
+
+    def __init__(self, target_cols, static_feat_cols=None, **estimator_kwargs):
+        self.target_cols = target_cols
+        self.estimator_kwargs = estimator_kwargs
+        self.static_feat_cols = static_feat_cols
+
+    def get_preprocessed(self, df):
+        """
+        Returns preprocessed copy of data before fitting the estimator.
+        """
+        return df.copy()
+    
+    def fit_transform_all(self, df, min_date=pd.to_datetime("2023-01-01")):
+        """
+        Assuming that the data is "doubled" - i.e. that each fight is
+        represented twice, once for each (Fighter, Opponent) permutation.
+        Returns a dataframe with the same number of rows as the input df.
+        df: pd.DataFrame
+        """
+        assert (df["fight_id"].value_counts() == 2).all()
+        prep_df = self.get_preprocessed(df)
+        feat_df = df[["FighterID_espn", "OpponentID_espn", "fight_id"]].copy()
+        # make sure all the target_cols are in the data
+        assert all([col in prep_df.columns for col in self.target_cols])
+        for target_col in self.target_cols:
+            print(f"fitting {target_col}")
+            estimator = self.estimator_class(target_col, static_feat_cols=self.static_feat_cols,
+                                             **self.estimator_kwargs)
+            curr_pred_df = estimator.fit_transform_all(prep_df, min_date=min_date)
+            curr_pred_df = curr_pred_df.rename(columns={"pred_elo_target": f"pred_{target_col}"})
+            feat_df = feat_df.merge(curr_pred_df, 
+                                    on=["FighterID_espn", "OpponentID_espn", "fight_id"],
+                                    how="left")
+        return feat_df
+
+class RealFighterPowerWrapper(BaseFighterPowerWrapper):
+    estimator_class = RealFighterPowerEstimator
+
+class BinaryFighterPowerWrapper(BaseFighterPowerWrapper):
+    estimator_class = BinaryFighterPowerEstimator
+
+# class BaseExactEloWrapper(BaseEloWrapper):
+
+#     def __init__(self, elo_alphas: dict):
+#         super().__init__(elo_alphas)
+
+#     def fit_transform_all(self, df):
+#         """
+#         Assuming that the data is "doubled" - i.e. that each fight is
+#         represented twice, once for each (Fighter, Opponent) permutation.
+#         Returns a dataframe with the same number of rows as the input df.
+#         df: pd.DataFrame
+#         """
+#         assert (df["fight_id"].value_counts() == 2).all()
+#         prep_df = self.get_preprocessed(df)
+#         elo_feat_df = df[["FighterID_espn", "OpponentID_espn", "fight_id"]].copy()
+#         for target_col, alpha in self.elo_alphas.items():
+#             print(f"getting elo features for {target_col}")
+#             elo_estimator = self.estimator_class(target_col, weight_decay=(1-alpha))
+#             elo_estimator.fit(prep_df)
+#             elo_feat_df = elo_feat_df.merge(
+#                 elo_estimator.elo_feature_df,
+#                 on=["FighterID_espn", "OpponentID_espn", "fight_id"],
+#                 how="left"
+#             ).rename(columns={
+#                 "pred_elo_target": f"pred_elo_{target_col}",
+#                 # "fighter_elo": f"fighter_elo_{target_col}",
+#                 # "opponent_elo": f"opponent_elo_{target_col}",
+#                 # "updated_fighter_elo": f"updated_fighter_elo_{target_col}",
+#                 # "updated_opponent_elo": f"updated_opponent_elo_{target_col}",
+#             })
+#             self.fitted_elo_estimators[target_col] = elo_estimator
+#         return elo_feat_df
+    
+# class RealExactEloWrapper(BaseExactEloWrapper):
+#     estimator_class = RealExactEloEstimator
+
+# class BinaryExactEloWrapper(BaseExactEloWrapper):
+#     estimator_class = BinaryExactEloEstimator
+
+# class ExactEloErrorWrapper(BaseExactEloWrapper):
+
+#     def __init__(self, elo_alphas: dict, init_score_col: str):
+#         super().__init__(elo_alphas)
+#         self.init_score_col = init_score_col
+
+#     def fit_transform_all(self, df):
+#         """
+#         Assuming that the data is "doubled" - i.e. that each fight is
+#         represented twice, once for each (Fighter, Opponent) permutation.
+#         Returns a dataframe with the same number of rows as the input df.
+#         df: pd.DataFrame
+#         """
+#         assert (df["fight_id"].value_counts() == 2).all()
+#         prep_df = self.get_preprocessed(df)
+#         elo_feat_df = df[["FighterID_espn", "OpponentID_espn", "fight_id"]].copy()
+#         for target_col, alpha in self.elo_alphas.items():
+#             print(f"getting elo features for {target_col}")
+#             elo_estimator = self.estimator_class(target_col, self.init_score_col, weight_decay=(1-alpha))
+#             elo_estimator.fit(prep_df)
+#             elo_feat_df = elo_feat_df.merge(
+#                 elo_estimator.elo_feature_df,
+#                 on=["FighterID_espn", "OpponentID_espn", "fight_id"],
+#                 how="left"
+#             ).rename(columns={
+#                 "pred_elo_target": f"pred_elo_{target_col}",
+#                 # "fighter_elo": f"fighter_elo_{target_col}",
+#                 # "opponent_elo": f"opponent_elo_{target_col}",
+#                 # "updated_fighter_elo": f"updated_fighter_elo_{target_col}",
+#                 # "updated_opponent_elo": f"updated_opponent_elo_{target_col}",
+#             })
+#             self.fitted_elo_estimators[target_col] = elo_estimator
+#         return elo_feat_df
+        
+
+# class RealExactEloErrorWrapper(ExactEloErrorWrapper):
+#     estimator_class = RealExactEloErrorEstimator
+
+# class BinaryExactEloErrorWrapper(ExactEloErrorWrapper):
+#     estimator_class = BinaryExactEloErrorEstimator
+
+class RealCoopWrapper(BaseEloWrapper):
+    estimator_class = RealCoopEstimator
+
+class BinaryCoopWrapper(BaseEloWrapper):
+    estimator_class = BinaryCoopEstimator
+
+class BinaryEloErrorWrapper(BaseEloWrapper):
+
+    def __init__(self, elo_alphas, init_score_col):
+        self.elo_alphas = elo_alphas
+        self.init_score_col = init_score_col
+        self.fitted_elo_estimators = dict()
+        self.estimator_class = lambda target_col, alpha: BinaryEloErrorEstimator(
+            target_col=target_col, alpha=alpha, init_score_col=init_score_col
+        )
             
 class PcaEloWrapper(RealEloWrapper):
     
