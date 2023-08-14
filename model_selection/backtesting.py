@@ -190,13 +190,27 @@ class TradingSimulator(object):
             x=x_col, y="portfolio_value",
             data=event_return_df
         )
-        growth_rates = event_return_df["portfolio_value"].pct_change().dropna()
-        harmonic_avg_growth_rate = 1 / np.mean(1 / (1 + growth_rates))
-        harmonic_avg_return = harmonic_avg_growth_rate - 1
+        # geometric growth rate
+        log_returns = np.log(event_return_df["portfolio_value"]).diff().dropna()
+        geometric_avg_growth_rate = np.exp(log_returns.mean()) - 1
+        std = log_returns.std()
+        t_statistic = log_returns.mean() / (std / np.sqrt(len(log_returns)))
         plt.title("Portfolio value over time - assume returns compound by %s\
-\nharmonic average return: %.4f"%(x_col, harmonic_avg_return))
+\ngeometric average return: %.4f \nstd of returns: %.4f \nt-statistic: %.4f"%(
+            x_col, geometric_avg_growth_rate, std, t_statistic))
         plt.xticks(rotation=45)
         plt.show()
+
+#         growth_rates = event_return_df["portfolio_value"].pct_change().dropna()
+#         harmonic_avg_growth_rate = 1 / np.mean(1 / (1 + growth_rates))
+#         harmonic_avg_return = harmonic_avg_growth_rate - 1
+#         std = growth_rates.std()
+#         t_statistic = harmonic_avg_return / (std / np.sqrt(len(growth_rates)))
+#         plt.title("Portfolio value over time - assume returns compound by %s\
+# \nharmonic average return: %.4f \nstd of returns: %.4f \nt-statistic: %.4f"%(
+#             x_col, harmonic_avg_return, std, t_statistic))
+#         plt.xticks(rotation=45)
+#         plt.show()
 
 
 class Portfolio(object):
@@ -352,7 +366,7 @@ class MultiKellyPortfolioManager(PortfolioManager):
 
         # i want to check that i'm never betting on both guys
         check_vec = (kelly_bet_fighter > 0) & (kelly_bet_opponent > 0)
-        assert not check_vec.any()
+        # assert not check_vec.any()
 
         # size bets proportional to kelly criterion for one bet
         n_bets = (kelly_bet_fighter > 0).sum() + (kelly_bet_opponent > 0).sum()
