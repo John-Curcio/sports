@@ -36,6 +36,7 @@ class TimeSeriesCrossVal(object):
             yield df.loc[inds]
             
     def get_cross_val_preds(self, model, df):
+        print("Can you read this?")
         train_df = pd.DataFrame()
         if self.min_test_date is not None:
             train_df = df.loc[df[self.test_date_col] < self.min_test_date]
@@ -52,9 +53,10 @@ class TimeSeriesCrossVal(object):
                     y_pred=y_pred,
                     test_fold=i,
                 )
+                assert y_pred_df["y_pred"].notnull().all()
                 fold_pred_df_list.append(y_pred_df)
             train_df = pd.concat([train_df, test_df])
-        self.fold_pred_df = pd.concat(fold_pred_df_list)
+        self.fold_pred_df = pd.concat(fold_pred_df_list).drop_duplicates(subset=["fight_id"])
         return self.fold_pred_df
     
     def score_preds(self, score_fn_dict=None):
