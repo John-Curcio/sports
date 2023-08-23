@@ -16,6 +16,8 @@ from abc import ABC, abstractmethod
 from model.mma_elo_model import BaseEloEstimator
 from sklearn.linear_model import LinearRegression, LogisticRegression, Ridge
 from scipy.sparse import csr_matrix, hstack
+# from concurrent.futures import ProcessPoolExecutor
+from joblib import Parallel, delayed
 
 unknown_fighter_id = "2557037" # "2557037/unknown-fighter"
 
@@ -42,7 +44,10 @@ class BaseFighterPowerEstimator(ABC):
     def transform_fighter_ids(self, fighter_ids:pd.Series):
         return self._fighter_encoder.transform(fighter_ids.values.reshape(-1,1))
     
-    def fit_fighter_encoder(self, fighter_ids:pd.Series):
+    def fit_fighter_encoder(self, fighter_ids:pd.Series, fast=False):
+        if fast:
+            fighter_counts = fighter_ids.value_counts()
+            fighter_ids = fighter_ids.map(lambda x: x if fighter_counts[x] > 1 else "journeyman")
         self.fighter_ids = sorted(set(fighter_ids))
         self._fighter_encoder = OneHotEncoder(handle_unknown="ignore")
         self._fighter_encoder.fit(fighter_ids.values.reshape(-1,1))
@@ -62,33 +67,53 @@ class BaseFighterPowerEstimator(ABC):
             self.fit_fighter_encoder(df["FighterID_espn"])
         self.init_linear_model(df)
         X = self.extract_features(df)
-        self.elo_feature_df = df[["fight_id", "FighterID_espn", "OpponentID_espn", 
-                                  "Date"]].copy()
+        # self.elo_feature_df = df[["fight_id", "FighterID_espn", "OpponentID_espn", 
+        #                           "Date"]].copy()
         sample_weights = self.get_sample_weights(df)
         y = df[self.target_col].values
         self.fit_linear_model(X, y, sample_weights=sample_weights)
-        self.elo_feature_df = self.elo_feature_df.assign(
-            pred_elo_target=self.predict_linear_model(X)
-        )
-        return self.elo_feature_df
+        # self.elo_feature_df = self.elo_feature_df.assign(
+        #     pred_elo_target=self.predict_linear_model(X)
+        # )
+        # return self.elo_feature_df
     
-    def fit_transform_all(self, df: pd.DataFrame, min_date=None):
-        """
-        Return predictions one date at a time, starting from min_date.
-        """
+    # def _fit_predict_helper(self, date, df):
+    #     train_df = df.query(f"Date < '{date}'")
+    #     test_df = df.query(f"Date == '{date}'")
+    #     return test_df[["fight_id", "FighterID_espn", "OpponentID_espn",
+    #                     self.target_col]].assign(
+    #                 pred_elo_target=self.fit_predict(train_df, test_df)
+    #             )
+    
+    def fit_transform_all(self, df, min_date=None, fast=False):
+        df = df.sort_values(["fight_id", "FighterID_espn", "OpponentID_espn"])\
+            .dropna(subset=[self.target_col])\
+            .reset_index(drop=True)
+        assert (df["fight_id"].value_counts() == 2).all()
         if min_date is None:
             min_date = df["Date"].min()
+        self.init_linear_model(df)
+        self.fit_fighter_encoder(df["FighterID_espn"], fast=fast)
         date_range = sorted(df.query(f"Date > '{min_date}'")["Date"].unique())
+        X = self.extract_features(df)
+        X = X.tocsr()
+        y = df[self.target_col].values
+        t = (df["Date"].max() - df["Date"]).dt.days / 30.5
+        log_w = np.log(1 - self.weight_decay) * t
+
         pred_df = []
         for date in tqdm(date_range):
-            train_inds = df["Date"] < date
-            test_inds = df["Date"] == date
-            train_df = df.loc[train_inds]
-            test_df = df.loc[test_inds]
+            train_inds = (df["Date"] < date).values
+            test_inds = (df["Date"] == date).values
+            X_train, y_train = X[train_inds], y[train_inds]
+            w_train = np.exp(log_w[train_inds] - log_w[train_inds].max())
+
+            self.fit_linear_model(X_train, y_train, sample_weights=w_train)
+            X_test = X[test_inds]
             pred_df.append(
-                test_df[["fight_id", "FighterID_espn", "OpponentID_espn",
-                        self.target_col]].assign(
-                    pred_elo_target=self.fit_predict(train_df, test_df)
+                df.loc[test_inds, ["fight_id", "FighterID_espn", "OpponentID_espn", 
+                                   self.target_col]].assign(
+                    pred_elo_target=self.predict_linear_model(X_test)
                 )
             )
         pred_df = pd.concat(pred_df).reset_index(drop=True)
@@ -147,6 +172,7 @@ class BaseFighterPowerEstimator(ABC):
         """
         # coef_init = self._linear_model.coef_ if self._linear_model.coef_ is not None else None
         self._linear_model.fit(X, y, #coef_init=coef_init, 
+                            #    warm_start=True, # this doesn't do anything for ridge
                                sample_weight=sample_weights)
         
     def init_linear_model(self, df: pd.DataFrame):
@@ -192,3 +218,39 @@ class RealFighterPowerEstimator(BaseFighterPowerEstimator):
             # solved with a linear eqn solver, not gradient descent
             # so it's not a big deal
         )
+
+    # def fit_transform_all(self, df: pd.DataFrame, min_date=None):
+    #     """
+    #     Return predictions one date at a time, starting from min_date.
+    #     """
+    #     if min_date is None:
+    #         min_date = df["Date"].min()
+    #     date_range = sorted(df.query(f"Date > '{min_date}'")["Date"].unique())
+
+    #     def fit_and_predict(date, df, target_col):
+    #         # TODO get rid of all references to self
+    #         train_inds = df["Date"] < date
+    #         test_inds = df["Date"] == date
+    #         train_df = df.loc[train_inds]
+    #         test_df = df.loc[test_inds]
+    #         return test_df[["fight_id", "FighterID_espn", "OpponentID_espn",
+    #                         target_col]].assign(
+    #                     pred_elo_target=self.fit_predict(train_df, test_df)
+    #                 )
+        
+
+
+    #     pred_df = []
+    #     for date in tqdm(date_range):
+    #         train_inds = df["Date"] < date
+    #         test_inds = df["Date"] == date
+    #         train_df = df.loc[train_inds]
+    #         test_df = df.loc[test_inds]
+    #         pred_df.append(
+    #             test_df[["fight_id", "FighterID_espn", "OpponentID_espn",
+    #                     self.target_col]].assign(
+    #                 pred_elo_target=self.fit_predict(train_df, test_df)
+    #             )
+    #         )
+    #     pred_df = pd.concat(pred_df).reset_index(drop=True)
+    #     return pred_df
