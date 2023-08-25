@@ -78,6 +78,7 @@ class BaseFighterPowerEstimator(ABC):
         """
         if min_date is None:
             min_date = df["Date"].min()
+        self.fit_fighter_encoder(df["FighterID_espn"])
         date_range = sorted(df.query(f"Date > '{min_date}'")["Date"].unique())
         pred_df = []
         for date in tqdm(date_range):
