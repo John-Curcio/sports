@@ -16,12 +16,14 @@ from abc import ABC, abstractmethod
 from model.mma_elo_model import BaseEloEstimator
 from sklearn.linear_model import LinearRegression, LogisticRegression, Ridge
 from scipy.sparse import csr_matrix, hstack
+# from concurrent.futures import ProcessPoolExecutor
+from joblib import Parallel, delayed
 
 unknown_fighter_id = "2557037" # "2557037/unknown-fighter"
 
 class BaseFighterPowerEstimator(ABC):
     """
-    Abstract base class for all exact elo estimators. 
+    Abstract base class for all exact elo estimators
     """
 
     def __init__(self, target_col, weight_decay=0.01, reg_penalty=10, static_feat_cols=None):
@@ -32,136 +34,97 @@ class BaseFighterPowerEstimator(ABC):
             static_feat_cols = []
         self.static_feat_cols = static_feat_cols
         self.fighter_ids = None
-        self.fighter_ids_with_target = None
-        self.useless_fighter_ids = None
         self._fighter_encoder = None
         self.elo_feature_df = None
 
-        self._linear_model = None # for regression
+        self._linear_model = None
 
-    def transform_fighter_ids(self, fighter_ids:pd.Series):
-        return self._fighter_encoder.transform(fighter_ids.values.reshape(-1,1))
-    
-    def fit_fighter_encoder(self, fighter_ids:pd.Series):
-        self.fighter_ids = sorted(set(fighter_ids))
-        self._fighter_encoder = OneHotEncoder(handle_unknown="ignore")
-        self._fighter_encoder.fit(fighter_ids.values.reshape(-1,1))
-
-    def fit(self, df: pd.DataFrame):
-        """
-        Assuming that the data is "doubled" - i.e. that each fight is
-        represented twice, once for each (Fighter, Opponent) permutation.
-        Returns a dataframe with the same number of rows as the input df.
-        df: pd.DataFrame
-        """
+    def fit_fighter_encoder(self, df: pd.DataFrame, fast=False):
         assert (df["fight_id"].value_counts() == 2).all()
-        df = df.sort_values(["fight_id", "FighterID_espn", "OpponentID_espn"])\
-            .dropna(subset=[self.target_col])\
-            .reset_index(drop=True)
-        if self.fighter_ids is None:
-            self.fit_fighter_encoder(df["FighterID_espn"])
-        self.init_linear_model(df)
-        X = self.extract_features(df)
-        self.elo_feature_df = df[["fight_id", "FighterID_espn", "OpponentID_espn", 
-                                  "Date"]].copy()
-        sample_weights = self.get_sample_weights(df)
-        y = df[self.target_col].values
-        self.fit_linear_model(X, y, sample_weights=sample_weights)
-        self.elo_feature_df = self.elo_feature_df.assign(
-            pred_elo_target=self.predict_linear_model(X)
-        )
-        return self.elo_feature_df
-    
-    def fit_transform_all(self, df: pd.DataFrame, min_date=None):
-        """
-        Return predictions one date at a time, starting from min_date.
-        """
-        if min_date is None:
-            min_date = df["Date"].min()
-        self.fit_fighter_encoder(df["FighterID_espn"])
-        date_range = sorted(df.query(f"Date > '{min_date}'")["Date"].unique())
-        pred_df = []
-        for date in tqdm(date_range):
-            train_inds = df["Date"] < date
-            test_inds = df["Date"] == date
-            train_df = df.loc[train_inds]
-            test_df = df.loc[test_inds]
-            pred_df.append(
-                test_df[["fight_id", "FighterID_espn", "OpponentID_espn",
-                        self.target_col]].assign(
-                    pred_elo_target=self.fit_predict(train_df, test_df)
-                )
-            )
-        pred_df = pd.concat(pred_df).reset_index(drop=True)
-        return pred_df
-    
-    def predict(self, test_df: pd.DataFrame):
-        """
-        Predict the outcome of a fight.
-        test_df: pd.DataFrame
-        """
-        X = self.extract_features(test_df)
-        test_df = test_df.assign(
-            pred_elo_target=self.predict_linear_model(X)
-        )
-        return test_df
-    
-    def fit_predict(self, train_df: pd.DataFrame, test_df: pd.DataFrame):
-        """
-        Fit the model on the train_df, then predict the outcome of the test_df.
-        train_df: pd.DataFrame
-        test_df: pd.DataFrame
-        """
-        _ = self.fit(train_df)
-        # pred_elo_df = self.predict(test_df)
-        # return fitted_elo_df, pred_elo_df[]
-        return self.predict(test_df)["pred_elo_target"]
-
-    def get_sample_weights(self, df: pd.DataFrame):
-        """
-        Return exponentially decreasing sample weights
-        w_t = (1 - self.weight_decay) ** (T - t)
-        I don't have to recalculate this every time, since 
-        weights get normalized anyway
-        """
-        days_since_max_date = (df["Date"].max() - df["Date"]).dt.days
-        months_since_max_date = days_since_max_date / 30.5
-        sample_weights = (1 - self.weight_decay) ** months_since_max_date
-        return sample_weights
+        if fast:
+            fighter_counts = df["FighterID_espn"].value_counts()
+            # this may introduce data leakage - we don't know whether the fighter will fight again in the future
+            fighter_ids = fighter_ids.map(lambda x: x if fighter_counts[x] > 1 else "journeyman")
+        self.fighter_ids = sorted(df["FighterID_espn"])
+        self._fighter_encoder = OneHotEncoder(handle_unknown="ignore")
+        self._fighter_encoder.fit(np.array(self.fighter_ids).reshape(-1,1))
 
     def extract_features(self, df: pd.DataFrame):
         """
         Extract features from the dataframe, possibly including static features
         """
         X = (
-            self.transform_fighter_ids(df["FighterID_espn"]) - 
-            self.transform_fighter_ids(df["OpponentID_espn"])
+            self._fighter_encoder.transform(df["FighterID_espn"].values.reshape(-1,1)) - 
+            self._fighter_encoder.transform(df["OpponentID_espn"].values.reshape(-1,1))
         )
         if len(self.static_feat_cols) > 0:
             X_extra = df[self.static_feat_cols].values
             X = hstack([X, X_extra])
         return X
 
-    def fit_linear_model(self, X, y, sample_weights=None):
+    def fit_transform_all(self, df, min_date=None, fast=False):
         """
-        Fit the linear model
+        For each date d starting from min_date, fit the model on all data prior to d,
+        and predict the outcome of all fights on date d.
+        Return a dataframe with the same number of rows as df.query("Date > {min_date}")
         """
-        # coef_init = self._linear_model.coef_ if self._linear_model.coef_ is not None else None
-        self._linear_model.fit(X, y, #coef_init=coef_init, 
-                               sample_weight=sample_weights)
-        
-    def init_linear_model(self, df: pd.DataFrame):
-        """
-        Set up the linear model
-        """
-        raise NotImplementedError()
+        assert (df["fight_id"].value_counts() == 2).all()
+        if min_date is None:
+            min_date = df["Date"].min()
+        date_range = sorted(df["Date"].loc[df["Date"] > min_date].unique())
+        pred_df = []
+        self.fit_fighter_encoder(df, fast=fast)
+        self.init_linear_model(df)
+        # self.fit_fighter_encoder(df.query(f"Date < '{min(date_range)}'"), fast=fast)
+        X = self.extract_features(df).tocsr()
+        y = df[self.target_col]
+        dt_vec = df["Date"]
+        log_w = np.log(1 - self.weight_decay) * (df["Date"].max() - df["Date"]).dt.days / 30.5
+        for date in tqdm(date_range):
+            train_inds = (dt_vec < date) & y.notnull()
+            test_inds = dt_vec == date
+            # if self.fighter_ids is None:
+            #     self.fit_fighter_encoder(df.loc[train_inds], fast=fast)
+            # X_train = self.extract_features(df.loc[train_inds])
+            # y_train = df[self.target_col].loc[train_inds]
+            # X_test = self.extract_features(df.loc[test_inds])
+            X_train, y_train = X[train_inds, :], y[train_inds]
+            X_test = X[test_inds, :]
+            w_train = np.exp(log_w[train_inds] - log_w[train_inds].max())
+            # t = (date - df["Date"][train_inds]).dt.days / 30.5
+            # w_train = (1 - self.weight_decay) ** t
+            self.fit_linear_model(X_train, y_train, sample_weights=w_train)
+            pred_df.append(
+                df.loc[test_inds, ["fight_id", "FighterID_espn", "OpponentID_espn",
+                                      self.target_col]].assign(
+                    pred_elo_target=self.predict_linear_model(X_test)
+                                      )
+            )
+        pred_df = pd.concat(pred_df).reset_index(drop=True)
+        return pred_df
     
-    def predict_linear_model(self, X: np.ndarray) -> np.ndarray:
-        """
-        Predict the outcome of a fight between fighter_ids and opponent_ids
-        """
+    def fit_linear_model(self, X, y, sample_weights=None):
+        return self._linear_model.fit(X, y, sample_weight=sample_weights)
+    
+    def predict_linear_model(self, X):
+        # logistic regression will have to override this
         return self._linear_model.predict(X)
     
+    def fit_predict(self, train_df, test_df):
+        X = self.extract_features(train_df)
+        y = train_df[self.target_col]
+        log_w = np.log(1 - self.weight_decay) * (train_df["Date"].max() - train_df["Date"]).dt.days / 30.5
+        w_train = np.exp(log_w - log_w.max())
+        self.fit_linear_model(X, y, sample_weights=w_train)
+        X_test = self.extract_features(test_df)
+        return test_df[["fight_id", "FighterID_espn", "OpponentID_espn"]].assign(
+            pred_elo_target=self.predict_linear_model(X_test)
+        )
+    
+    def init_linear_model(self, df: pd.DataFrame):
+        raise NotImplementedError()
+
+
 class BinaryFighterPowerEstimator(BaseFighterPowerEstimator):
 
     def init_linear_model(self, df: pd.DataFrame):
@@ -170,6 +133,7 @@ class BinaryFighterPowerEstimator(BaseFighterPowerEstimator):
             C=1/self.reg_penalty, # inverse of regularization strength
             fit_intercept=False,
             warm_start=True,
+            # warm_start=False,
             solver="lbfgs",
             n_jobs=-1
         )

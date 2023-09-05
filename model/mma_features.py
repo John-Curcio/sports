@@ -36,6 +36,9 @@ from sklearn.decomposition import PCA
 from scipy.special import expit, logit
 from abc import ABC, abstractmethod
 
+from concurrent.futures import ProcessPoolExecutor
+from tqdm import tqdm
+
 
 class BaseEloWrapper(ABC):
 
@@ -128,6 +131,16 @@ class RealEloWrapper(BaseEloWrapper):
 class BinaryEloWrapper(BaseEloWrapper):
     estimator_class = BinaryEloEstimator
 
+
+def _fit_transform_all_helper(date, estimator, df):
+    # should be easily serializable
+    train_df = df.query(f"Date < '{date}'")
+    test_df = df.query(f"Date == '{date}'")
+    return test_df[["fight_id", "FighterID_espn", "OpponentID_espn",
+                    estimator.target_col]].assign(
+                pred_elo_target=estimator.fit_predict(train_df, test_df)
+            )
+
 class BaseFighterPowerWrapper(BaseEloWrapper):
     # Use the same signature as the BaseEloWrapper
 
@@ -142,13 +155,14 @@ class BaseFighterPowerWrapper(BaseEloWrapper):
         """
         return df.copy()
     
-    def fit_transform_all(self, df, min_date=pd.to_datetime("2023-01-01")):
+    def fit_transform_all(self, df, min_date=pd.to_datetime("2023-01-01"), fast=False):
         """
         Assuming that the data is "doubled" - i.e. that each fight is
         represented twice, once for each (Fighter, Opponent) permutation.
         Returns a dataframe with the same number of rows as the input df.
         df: pd.DataFrame
         """
+        print("trying again with a just one estimator, calling estimator.fit_transform_all, which just uses a for loop")
         assert (df["fight_id"].value_counts() == 2).all()
         prep_df = self.get_preprocessed(df)
         feat_df = df[["FighterID_espn", "OpponentID_espn", "fight_id"]].copy()
@@ -157,8 +171,8 @@ class BaseFighterPowerWrapper(BaseEloWrapper):
         for target_col in self.target_cols:
             print(f"fitting {target_col}")
             estimator = self.estimator_class(target_col, static_feat_cols=self.static_feat_cols,
-                                             **self.estimator_kwargs)
-            curr_pred_df = estimator.fit_transform_all(prep_df, min_date=min_date)
+                                                **self.estimator_kwargs)
+            curr_pred_df = estimator.fit_transform_all(prep_df, min_date=min_date, fast=fast)
             curr_pred_df = curr_pred_df.rename(columns={"pred_elo_target": f"pred_{target_col}"})
             feat_df = feat_df.merge(curr_pred_df, 
                                     on=["FighterID_espn", "OpponentID_espn", "fight_id"],
