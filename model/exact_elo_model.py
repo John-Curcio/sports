@@ -75,7 +75,6 @@ class BaseFighterPowerEstimator(ABC):
         pred_df = []
         self.fit_fighter_encoder(df, fast=fast)
         self.init_linear_model(df)
-        # self.fit_fighter_encoder(df.query(f"Date < '{min(date_range)}'"), fast=fast)
         X = self.extract_features(df).tocsr()
         y = df[self.target_col]
         dt_vec = df["Date"]
@@ -83,16 +82,9 @@ class BaseFighterPowerEstimator(ABC):
         for date in tqdm(date_range):
             train_inds = (dt_vec < date) & y.notnull()
             test_inds = dt_vec == date
-            # if self.fighter_ids is None:
-            #     self.fit_fighter_encoder(df.loc[train_inds], fast=fast)
-            # X_train = self.extract_features(df.loc[train_inds])
-            # y_train = df[self.target_col].loc[train_inds]
-            # X_test = self.extract_features(df.loc[test_inds])
             X_train, y_train = X[train_inds, :], y[train_inds]
             X_test = X[test_inds, :]
             w_train = np.exp(log_w[train_inds] - log_w[train_inds].max())
-            # t = (date - df["Date"][train_inds]).dt.days / 30.5
-            # w_train = (1 - self.weight_decay) ** t
             self.fit_linear_model(X_train, y_train, sample_weights=w_train)
             pred_df.append(
                 df.loc[test_inds, ["fight_id", "FighterID_espn", "OpponentID_espn",
