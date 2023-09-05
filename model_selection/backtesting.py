@@ -186,9 +186,13 @@ class TradingSimulator(object):
         event_return_df = return_df.groupby(x_col)["final_portfolio_value"].max()\
             .reset_index()\
             .rename(columns={"final_portfolio_value": "portfolio_value"})
-        sns.lineplot(
-            x=x_col, y="portfolio_value",
-            data=event_return_df
+        # sns.lineplot(
+        #     x=x_col, y="portfolio_value",
+        #     data=event_return_df
+        # )
+        plt.plot(
+            event_return_df[x_col].values,
+            event_return_df["portfolio_value"].values,
         )
         # geometric growth rate
         log_returns = np.log(event_return_df["portfolio_value"]).diff().dropna()
