@@ -57,6 +57,11 @@ MANUAL_ESPN_OVERWRITE_MAP = {
 
     # caleb hall
     '5085101': '5139608',
+
+    # Fabiano silva de conceicao - same birthdate, weight class, country
+    # https://www.espn.com/mma/fighter/_/id/2960774
+    # https://www.espn.com/mma/fighter/_/id/3956788
+    "3956788": "2960774",
 }
 
 MANUAL_BFO_OVERWRITE_MAP = {
@@ -149,6 +154,44 @@ MANUAL_UFC_ESPN_MAP = {
     "1ebe20ebbfa15e29": "4350762",
     # valentina shevchenko
     "132deb59abae64b1": "2554705",
+    # JOHN MATUA - early ufc
+    "c933d423ebdbbbdb": "2952787",
+    # Yibugele
+    "cc2fcae2c0dc501d": "4790286",
+    # JINIUSHIYUE
+    "c14a683dac2ebc4c": "5135132",
+    # Michael Byrnes
+    "87f0b37f153cf497": "2517130",
+
+    # Kazushi Sakuraba
+    "9b5b5a75523728f3": "2354279",
+
+    ### some strikeforce fighters
+    # Kier Gooch
+    "1bda4867f1baceac": "2509293",
+    # Reynaldo Trujillo 
+    "e6b233a007cb06c4": "3032282",
+    # Artenas Young
+    "8d4943a9ce9f521b": "2509299",
+    ### road to UFC
+    # peter danesoe
+    "5f119b24c0f9679c": "5140898",
+    # kazuma marayuma
+    "aa1a873d05acc7eb": "5082827",
+    ### DWCS https://www.espn.com/mma/fightcenter/_/id/401074498/league/ufc
+    # dayana silva
+    "b19aecbfbb5508cc": "3971629",
+    # luana carolina
+    "528b071cf3da7c56": "4372194",
+    # thiago moises
+    "d945aae53e3e54e6": "3955778",
+    ## DWCS 4.7
+    # dinis paiva
+    "ad3a5e465c76e499": "3947116",
+    ## DWCS 2.8
+    # alex gilpin
+    "762c69860eef65d8": "4070902",
+
 }
 
 FALSE_OVERWRITE_UFC_MAP = {
@@ -199,6 +242,34 @@ FALSE_OVERWRITE_ESPN_MAP = {
 # https://www.bestfightodds.com/fighters/Thiago-Santos-2526
     '2559760': '3045798',
     '4710380': '3045798',
+
+# https://www.espn.com/mma/fighter/_/id/5007668/caio-machado
+    '5007668': "3104905",
+
+# conflicts revealed when we don't drop fights with missing odds
+# (leave them in there to hopefully get more coverage)
+# https://www.bestfightodds.com/fighters/Aaron-Phillips-4905
+    '4690560': '3098802',
+# https://www.bestfightodds.com/fighters/Chris-Brown-3079
+    '2613371': '2527881',
+# https://www.bestfightodds.com/fighters/Dustin-West-1786
+    '2951506': '2512094',
+# https://www.bestfightodds.com/fighters/Justin-Edwards-1252
+    '4700150': '2560089',
+# https://www.bestfightodds.com/fighters/Magomed-Magomedov-8087
+    '5135096': '2966188',
+# https://www.bestfightodds.com/fighters/Marcus-Hicks-204
+    '3119427': '2499032',
+# https://www.bestfightodds.com/fighters/Matt-Jones-3831
+    '4526338': '3087922',
+# https://www.bestfightodds.com/fighters/Matthew-Elliott-9330
+    '4913878': '4851462',
+# https://www.bestfightodds.com/fighters/Mike-Jackson-6182
+    '2515903': '3960472',
+# https://www.bestfightodds.com/fighters/Rafael-Silva-4257
+    '3937429': '2957832',
+# https://www.bestfightodds.com/fighters/Steven-Rodriguez-4517
+    '4193479': '3119463',
 }
 
 MANUAL_BFO_UFC_MAP = {
@@ -348,6 +419,24 @@ MANUAL_BFO_ESPN_MAP = {
     "Kaytlin-Neil-7549": "4244337",
 
     "Sung-Bin-Jo-9183": "4422443",
+
+
+    # "Bobby-Seronio-III-12458": "4884789",
+    # "Socrates-Hernandez-10003": "4884791",
+    "Pedro-Juarez-12457": "4884792",
+    "Erin-Hunter-12459": "4884790",
+    # conflicts revealed when we don't drop fights with missing odds
+    # (leave them in there to hopefully get more coverage)
+    "Waachim-Spiritwolf-1273": "2554494",
+    "Reant-Fabriza-Rainir-5577": "4214237",
+    "Raquel-Pa-aluhi-5257": "2975423",
+    "Juan-Gonzalez-8294": "4410869",
+    "Chris-Ocon-9083": "4425705",
+    "Brittney-Victoria-8706": "4400126",
+    "He-Nan-Nan-5363": "3160645",
+    "Charles-Bennett-1847": "2499300",
+    "Carlos-Silva-9038": "4420509",
+    "Aaron-Becker-8748": "4575852",
 }
 
 MANUAL_THE_ODDS_ESPN_MAP = {
