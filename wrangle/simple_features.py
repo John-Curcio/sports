@@ -6,7 +6,8 @@ import multiprocessing
 
 def _get_career_stats(fighter_group):
     fighter_id, fighter_group = fighter_group
-    fighter_df = fighter_group.sort_values("Date")
+    # fighter_df = fighter_group.sort_values("Date")
+    fighter_df = fighter_group.drop_duplicates(subset="fight_id").sort_values("Date")
 
     first_fight = fighter_df["Date"].min()
     n_career_fights = np.arange(0, len(fighter_df))
@@ -49,6 +50,8 @@ class Preprocessor(object):
         df = self.assign_gender(df)
         df = self.assign_clean_stats(df)
         self.pp_df = self.assign_career_stats(df)
+        # we shouldn't be introducing any extra rows
+        assert self.pp_df.shape[0] == df.shape[0] == self.raw_df.shape[0]
         return self.pp_df
     
     @staticmethod
@@ -114,8 +117,9 @@ class Preprocessor(object):
             fighter_groupby = df.dropna(subset="FighterID_espn").groupby("FighterID_espn")
             career_df = list(tqdm(pool.imap(_get_career_stats, fighter_groupby, chunksize=10)))
         # impute career stats for null FighterID_espn
-        # if the fighter is unknown, it's probably because he's a new fighter
-        inds = df[["FighterID_espn", "OpponentID_espn"]].isnull().any(1)
+        # if the fighter is unknown, it must be his first fight
+        # inds = df[["FighterID_espn", "OpponentID_espn"]].isnull().any(1)
+        inds = df["FighterID_espn"].isnull() # | df["OpponentID_espn"].isnull()
         fight_ids = df.loc[inds, "fight_id"]
         career_df.append(pd.DataFrame({
             "fight_id": fight_ids,

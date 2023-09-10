@@ -62,6 +62,13 @@ MANUAL_ESPN_OVERWRITE_MAP = {
     # https://www.espn.com/mma/fighter/_/id/2960774
     # https://www.espn.com/mma/fighter/_/id/3956788
     "3956788": "2960774",
+
+    # https://www.sherdog.com/fighter/Will-Santiago-Jr-65536
+    "3123995": "4339129",
+
+    # https://www.sherdog.com/fighter/Luis-Muro-81965
+    "4231385": "4022258",
+    "4590303": "4022258",
 }
 
 MANUAL_BFO_OVERWRITE_MAP = {
@@ -102,6 +109,19 @@ MANUAL_BFO_OVERWRITE_MAP = {
     "Michael-Malott-13500": "Mike-Malott-13089",
     "Aori-Qileng-13588": "Qileng-Aori-10837",
     "Brogan-Walker-Sanchez-8337": "Brogan-Walker-7832",
+
+    # https://www.sherdog.com/fighter/Daniel-da-Silva-248591
+    "Daniel-da-Silva-13133": "Daniel-da-Silva-Lacerda-16165",
+    "Daniel-Lacerda-12102": "Daniel-da-Silva-Lacerda-16165",
+
+    # https://www.sherdog.com/fighter/Mike-Mathetha-266635
+    "Blood-Diamond-13276": "Mike-Mathetha-12831",
+
+    # https://www.sherdog.com/fighter/Paulo-Henrique-Laia-275067
+    "Paulo-Henrique-15262": "Paulo-Laia-15272",
+
+    "Alexander-Romanov-9945": "Alexandr-Romanov-10383",
+
 }
 
 MANUAL_UFC_ESPN_MAP = {
@@ -192,6 +212,32 @@ MANUAL_UFC_ESPN_MAP = {
     # alex gilpin
     "762c69860eef65d8": "4070902",
 
+    ## very recent, upcoming fights
+    # Caolan Loughran
+    "42ac4020cba261ad": "5077789",
+    # Yanis Ghemmouri
+    "eb70e786bbdf1d16": "5152931",
+    # Nora Cornolle
+    "f2b3f4ef3f780168": "4916974",
+    # Morgan Charriere
+    "5b03b61f9d90125e": "4324622",
+    # Manolo Zecchini
+    "fd7ab338e4953644": "5157247",
+    # Charles Radtke
+    "feedf3053472fe56": "4416297",
+    # Montserrat Rendon
+    "60193e707634e560": "5093484",
+
+    # Felipe dos santos
+    "5cdf5339728f580d": "5143333",
+    # Landon Quinones
+    "267f4a6568abe245": "4690546",
+    # Kevin Jousset
+    "dda15dbfafb792df": "4830364",
+    # Kiefer Crosbie
+    "4729c93ba705a3bf": "4425962",
+    # So Yul Kim
+    "864c07a7ff90caae": "5167318",
 }
 
 FALSE_OVERWRITE_UFC_MAP = {
@@ -421,22 +467,32 @@ MANUAL_BFO_ESPN_MAP = {
     "Sung-Bin-Jo-9183": "4422443",
 
 
-    # "Bobby-Seronio-III-12458": "4884789",
-    # "Socrates-Hernandez-10003": "4884791",
+    "Bobby-Seronio-III-12458": "4884789",
+    "Socrates-Hernandez-10003": "4884791",
     "Pedro-Juarez-12457": "4884792",
     "Erin-Hunter-12459": "4884790",
-    # conflicts revealed when we don't drop fights with missing odds
-    # (leave them in there to hopefully get more coverage)
-    "Waachim-Spiritwolf-1273": "2554494",
-    "Reant-Fabriza-Rainir-5577": "4214237",
-    "Raquel-Pa-aluhi-5257": "2975423",
-    "Juan-Gonzalez-8294": "4410869",
-    "Chris-Ocon-9083": "4425705",
-    "Brittney-Victoria-8706": "4400126",
-    "He-Nan-Nan-5363": "3160645",
-    "Charles-Bennett-1847": "2499300",
-    "Carlos-Silva-9038": "4420509",
-    "Aaron-Becker-8748": "4575852",
+    # # conflicts revealed when we don't drop fights with missing odds
+    # # (leave them in there to hopefully get more coverage)
+    # "Waachim-Spiritwolf-1273": "2554494",
+    # "Reant-Fabriza-Rainir-5577": "4214237",
+    # "Raquel-Pa-aluhi-5257": "2975423",
+    # "Juan-Gonzalez-8294": "4410869",
+    # "Chris-Ocon-9083": "4425705",
+    # "Brittney-Victoria-8706": "4400126",
+    # "He-Nan-Nan-5363": "3160645",
+    # "Charles-Bennett-1847": "2499300",
+    # "Carlos-Silva-9038": "4420509",
+    # "Aaron-Becker-8748": "4575852",
+
+
+    "Narantungalag-Jadambaa-6335": "2509757",
+
+    "Kory-Moegenburg-12251": "4231045",
+    "Bailey-Schoenfelder-12249": "4047571",
+    "Kevin-Childs-12250": "4878437",
+
+    "Shin-Haraguchi-15881": "5138996",
+    "Quillan-Salkilld-16405": "5157667",
 }
 
 MANUAL_THE_ODDS_ESPN_MAP = {
