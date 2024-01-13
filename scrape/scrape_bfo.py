@@ -22,8 +22,11 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver import FirefoxOptions
 
-driver = webdriver.Firefox()
+opts = FirefoxOptions()
+opts.add_argument("--headless")
+driver = webdriver.Firefox(options=opts)
 
 
 
@@ -44,23 +47,12 @@ class BfoRequest(object):
         self.url = url
         self.max_tries = max_tries
         self.sleep_time = sleep_time
-        self.session = requests.Session()
+        # self.session = requests.Session()
         self.raw_html = None
         
     def get_request(self):
-        for i in range(self.max_tries):
-            r = self.session.get(self.url, headers=headers)
-            if not r.text.startswith("Error "):
-                # great, we got a legit response
-                break
-            else:
-                r.close()
-            # sleep for sleep_time
-            print("{} gave us an Error 0, retrying in {} seconds".format(self.url, self.sleep_time))
-            time.sleep(self.sleep_time)
-        if r.text.startswith("Error "):
-            raise EmptyResponse(self.url)
-        return r
+        driver.get(self.url)
+        return driver.page_source
 
 class BaseBfoPageScraper(BfoRequest):
 
@@ -70,12 +62,11 @@ class BaseBfoPageScraper(BfoRequest):
         self.data = None
 
     def get_html(self):
-        r = self.get_request()
-        self.raw_html = r.text
-        tables = pd.read_html(str(r.text))
-        for i, table in enumerate(tables):
+        self.raw_html = self.get_request()
+        self.tables = pd.read_html(self.raw_html)
+        for i, table in enumerate(self.tables):
             table["table_id"] = i
-        self.data = pd.concat(tables)
+        self.data = pd.concat(self.tables)
         return self.data
 
 class FighterScraper(BaseBfoPageScraper):
@@ -85,20 +76,11 @@ class FighterScraper(BaseBfoPageScraper):
         self.fighter_urls = None
         self.event_urls = None
         self.odds_df = None
-        
-    def get_html(self):
-        r = self.get_request()
-        self.raw_html = r.text
-        tables = pd.read_html(str(r.text))
-        for i, table in enumerate(tables):
-            table["table_id"] = i
-        self.data = pd.concat(tables)
-        return self.data
     
     def get_fighter_urls(self):
         if self.data is None:
             self.get_html()
-        # self.data["url"] = self.url
+        # self.data["url"] = self.urlipython
         soup = BeautifulSoup(self.raw_html, features="lxml")
         tbody = soup.find("tbody")
         urls = [link.get("href") for link in tbody.find_all("a")]
@@ -161,16 +143,6 @@ class EventScraper(BaseBfoPageScraper):
         self.fight_odds_df = None
         self.prop_odds_df = None
         self.prop_html = None
-        
-    def get_html(self):
-        r = self.get_request()
-        self.raw_html = r.text
-        tables = pd.read_html(str(r.text))
-        self.tables = tables
-        for i, table in enumerate(tables):
-            table["table_id"] = i
-        self.data = pd.concat(tables)
-        return self.data
     
     def get_fighter_urls(self):
         if self.data is None:
@@ -530,10 +502,10 @@ def main():
     # max_iters = 1
     max_iters = np.inf
     bfo = BfoOddsScraper(max_iters=max_iters)
-    # bfo.scrape_and_write_all_urls()
+    bfo.scrape_and_write_all_urls()
     bfo.load_urls()
-    # bfo.scrape_and_write_opening_odds()
-    # bfo.scrape_and_write_prop_html()
+    bfo.scrape_and_write_opening_odds()
+    bfo.scrape_and_write_prop_html()
     bfo.scrape_and_write_closing_odds()
     print("done!")
     

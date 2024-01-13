@@ -21,6 +21,16 @@ headers = {
     'Content-Type': 'text/html',
 }
 
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver import FirefoxOptions
+
+opts = FirefoxOptions()
+opts.add_argument("--headless")
+driver = webdriver.Firefox(options=opts)
+
 
 class EmptyResponse(Exception):
     pass
@@ -39,6 +49,8 @@ class BasePageScraper(ABC):
         self.data = None
         
     def get_request(self):
+        # driver.get(self.url)
+        # return driver.page_source
         for i in range(self.max_tries):
             r = requests.get(self.url, headers=headers)
             r.close()

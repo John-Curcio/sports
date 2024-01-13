@@ -15,10 +15,10 @@ import boto3
 from scrape.base_scrape import BasePageScraper
 from db import base_db_interface
 
-headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/46.0.2490.80 Safari/537.36',
-    'Content-Type': 'text/html',
-}
+from scrape.base_scrape import driver, headers
+
+from concurrent.futures import ProcessPoolExecutor
+
 
 
 class Fighter(object):
@@ -40,6 +40,10 @@ class Fighter(object):
     def get_soup(self, soup_type):
         assert soup_type in ["stats", "history", "bio"], soup_type
         soup_url = "https://www.espn.com/mma/fighter/{}/_/id/{}".format(soup_type, self.fighter_id)
+
+        # driver.get(soup_url)
+        # html = driver.page_source
+        # return BeautifulSoup(html, "lxml")
         
         r = requests.get(soup_url, headers=headers)
         html = r.text
@@ -116,6 +120,23 @@ class Fighter(object):
         return self.bio_df
 
 
+def _scrape_fighter(fighter):
+    # helper fn in order to use ProcessPoolExecutor
+    # if verbose:
+    # print(fighter.base_url)
+    # update bio_df, stats_df, and matches_df
+    bio_data, stats_data, matches_data = None, None, None
+    try:
+        bio_data = fighter.scrape_bio()
+        bio_data["FighterID"] = fighter.fighter_id
+        stats_data = fighter.scrape_stats()
+        stats_data["FighterID"] = fighter.fighter_id
+        matches_data = fighter.scrape_matches()
+        matches_data["FighterID"] = fighter.fighter_id
+    except:
+        pass
+    return bio_data, stats_data, matches_data
+
 class FighterSearchScraper(object):
 
     def __init__(self, n_fighters=np.inf, n_pages=np.inf, start_letter="a", end_letter="z",
@@ -134,6 +155,8 @@ class FighterSearchScraper(object):
     def get_fighter_urls(self, search_url):
         r = requests.get(search_url, headers=headers)
         html = r.text
+        # driver.get(search_url)
+        # html = driver.page_source
         curr_soup = BeautifulSoup(html, "lxml")
         # table_body = curr_soup.find("tbody") # no idea why this works with selenium and not requests!!
         table_body = curr_soup.find("table", {"class": "tablehead"})
@@ -165,72 +188,109 @@ class FighterSearchScraper(object):
         stats_list = []
         bio_list = []
         matches_list = []
-        if not verbose:
-            fighters = tqdm(fighters)
-        def _scrape_fighter_success(fighter, print_missing_fighter=False):
-            if verbose:
-                print(fighter.base_url)
-            # update bio_df, stats_df, and matches_df
-            try:
-                if bio:
-                    curr_bio_df = fighter.scrape_bio()
-                    if print_missing_fighter:
-                        print("scraped bio!")
-                    curr_bio_df["FighterID"] = fighter.fighter_id
-                    bio_list.append(curr_bio_df)
-                if stats:
-                    curr_stats_df = fighter.scrape_stats()
-                    if print_missing_fighter:
-                        print("scraped stats!")
-                        print(curr_stats_df)
-                    curr_stats_df["FighterID"] = fighter.fighter_id
-                    stats_list.append(curr_stats_df)
-                if matches:
-                    curr_matches_df = fighter.scrape_matches()
-                    if print_missing_fighter:
-                        print("scraped matches!")
-                    curr_matches_df["FighterID"] = fighter.fighter_id
-                    matches_list.append(curr_matches_df)
-                return True
-            except:
-                return False
-        
-        missed_fighters = []
-        for fighter in fighters:
-            if not _scrape_fighter_success(fighter):
-                missed_fighters.append(fighter)
+
+        with ProcessPoolExecutor() as executor:
+            results = list(tqdm(executor.map(_scrape_fighter, fighters), total=len(fighters)))
+
+        missed_fighters = [fighter for result, fighter in zip(results, fighters) if all(item is None for item in result)]
         print("failed to scrape the following fighters:")
         for fighter in missed_fighters:
             print(fighter.base_url)
-        # self._missed_fighters = foo
-        # for _ in range(self.max_missed_fighter_retries):
-        #     if len(foo) == 0:
-        #         break
-        #     for fighter in foo:
-        #         if _scrape_fighter_success(fighter, print_missing_fighter=True):
-        #             foo.remove(fighter)
-        # the _scrape_fighter function appends fighters that couldn't be 
-        # scraped to self._missed_fighters. Here, we try to scrape those
-        # fighters again. And if they don't want to be scraped, well, we
-        # scrape em again and again and again until they give in (or we give up)
-        # for _ in range(self.max_missed_fighter_retries):
-        #     if len(self._missed_fighters) == 0:
-        #         break
-        #     print("scraping ", len(self._missed_fighters), "missed fighters")
-        #     _missed_fighters_copy = self._missed_fighters
-        #     self._missed_fighters = []
-        #     for fighter in _missed_fighters_copy:
-        #         _scrape_fighter(fighter, print_missing_fighter=True)
+
+        for result in results:
+            bio_data, stats_data, matches_data = result
+            if bio_data is not None:
+                bio_list.append(bio_data)
+            if stats_data is not None:
+                stats_list.append(stats_data)
+            if matches_data is not None:
+                matches_list.append(matches_data)
+
         if stats:
             self.stats_df = pd.concat(stats_list)
         if bio:
-            self.bio_df = pd.concat(bio_list) 
+            self.bio_df = pd.concat(bio_list)
         if matches:
             self.matches_df = pd.concat(matches_list)
+
         self.missed_fighters_df = pd.DataFrame({
             "fighter_url": list(set([f.base_url for f in missed_fighters]))
         })
         print("left with ", len(self.missed_fighters_df), " missed fighters")
+
+        
+    # def run_scraper(self, verbose=True, bio=True, stats=True, matches=True):
+    #     fighters = self.scrape_fighters()
+    #     self.fighters = fighters
+    #     stats_list = []
+    #     bio_list = []
+    #     matches_list = []
+    #     if not verbose:
+    #         fighters = tqdm(fighters)
+    #     def _scrape_fighter_success(fighter, print_missing_fighter=False):
+    #         if verbose:
+    #             print(fighter.base_url)
+    #         # update bio_df, stats_df, and matches_df
+    #         try:
+    #             if bio:
+    #                 curr_bio_df = fighter.scrape_bio()
+    #                 if print_missing_fighter:
+    #                     print("scraped bio!")
+    #                 curr_bio_df["FighterID"] = fighter.fighter_id
+    #                 bio_list.append(curr_bio_df)
+    #             if stats:
+    #                 curr_stats_df = fighter.scrape_stats()
+    #                 if print_missing_fighter:
+    #                     print("scraped stats!")
+    #                     print(curr_stats_df)
+    #                 curr_stats_df["FighterID"] = fighter.fighter_id
+    #                 stats_list.append(curr_stats_df)
+    #             if matches:
+    #                 curr_matches_df = fighter.scrape_matches()
+    #                 if print_missing_fighter:
+    #                     print("scraped matches!")
+    #                 curr_matches_df["FighterID"] = fighter.fighter_id
+    #                 matches_list.append(curr_matches_df)
+    #             return True
+    #         except:
+    #             return False
+        
+    #     missed_fighters = []
+    #     for fighter in fighters:
+    #         if not _scrape_fighter_success(fighter):
+    #             missed_fighters.append(fighter)
+    #     print("failed to scrape the following fighters:")
+    #     for fighter in missed_fighters:
+    #         print(fighter.base_url)
+    #     # self._missed_fighters = foo
+    #     # for _ in range(self.max_missed_fighter_retries):
+    #     #     if len(foo) == 0:
+    #     #         break
+    #     #     for fighter in foo:
+    #     #         if _scrape_fighter_success(fighter, print_missing_fighter=True):
+    #     #             foo.remove(fighter)
+    #     # the _scrape_fighter function appends fighters that couldn't be 
+    #     # scraped to self._missed_fighters. Here, we try to scrape those
+    #     # fighters again. And if they don't want to be scraped, well, we
+    #     # scrape em again and again and again until they give in (or we give up)
+    #     # for _ in range(self.max_missed_fighter_retries):
+    #     #     if len(self._missed_fighters) == 0:
+    #     #         break
+    #     #     print("scraping ", len(self._missed_fighters), "missed fighters")
+    #     #     _missed_fighters_copy = self._missed_fighters
+    #     #     self._missed_fighters = []
+    #     #     for fighter in _missed_fighters_copy:
+    #     #         _scrape_fighter(fighter, print_missing_fighter=True)
+    #     if stats:
+    #         self.stats_df = pd.concat(stats_list)
+    #     if bio:
+    #         self.bio_df = pd.concat(bio_list) 
+    #     if matches:
+    #         self.matches_df = pd.concat(matches_list)
+    #     self.missed_fighters_df = pd.DataFrame({
+    #         "fighter_url": list(set([f.base_url for f in missed_fighters]))
+    #     })
+    #     print("left with ", len(self.missed_fighters_df), " missed fighters")
 
     def write_all_to_tables(self):
         for table_name, df in [
@@ -279,7 +339,7 @@ def main():
     TEST_UPCOMING = True
     if TEST_HISTORICAL:
         start_letter, end_letter = "a", "z"
-        # start_letter, end_letter = "u", "v"
+        # start_letter, end_letter = "s", "z"
         foo = FighterSearchScraper(start_letter=start_letter, end_letter=end_letter)
         foo.run_scraper(bio=True, matches=True, stats=True)
         foo.write_all_to_tables()
