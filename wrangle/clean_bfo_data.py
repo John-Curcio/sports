@@ -117,7 +117,7 @@ def clean_fighter_bfo(bfo_df):
     the fighter pages on bestfightodds.com. Example page for Islam Makhachev:
     https://www.bestfightodds.com/fighters/Islam-Makhachev-5541
     """
-    bfo_df["Date"] = pd.to_datetime(bfo_df["Date"])
+    bfo_df["Date"] = pd.to_datetime(bfo_df["Date"], format="mixed")
     bfo_df["FighterName"] = bfo_df["FighterName"].str.lower().str.strip()
     bfo_df["OpponentName"] = bfo_df["OpponentName"].str.lower().str.strip()
     bfo_df = bfo_df.rename(columns={
@@ -208,8 +208,4 @@ def clean_all_bfo(fighter_df, event_df):
     )
     return full_df_clean
 
-# if __name__ == "__main__": 
-#     fighter_df = pd.read_csv("data/all_fighter_odds_2022-07-16.csv")
-#     event_df = pd.read_csv("data/bfo_event_odds_2022-07-16.csv")
-#     bfo_df = clean_all_bfo(fighter_df, event_df)
-#     bfo_df.to_csv("data/bfo_open_and_close_odds.csv", index=False)
+

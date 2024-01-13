@@ -13,6 +13,11 @@ class UfcDataCleaner(object):
         self.desc_df = base_db_interface.read("ufc_fight_description")
         self.upcoming_fights_df = base_db_interface.read("ufc_upcoming_fights")
 
+        assert self.desc_df.shape[0] == self.totals_df["FightID"].nunique()
+        assert self.desc_df.shape[0] == self.strikes_df["FightID"].nunique()
+        # ufc_events may include events for which no round-by-round stats were recorded
+        assert self.events_df["FightID"].nunique() >= self.totals_df["FightID"].nunique()
+
         self.clean_totals_df = None 
         self.clean_strikes_df = None 
         self.clean_events_df = None 
@@ -132,6 +137,7 @@ class UfcDataCleaner(object):
             "OpponentName": "FighterName",
         })
         event_complement_df["W/L"] = event_complement_df["W/L"].replace("win", "loss")
+        # Dropping these columns; we'll refer to them in the totals and strikes insted
         drop_cols = [
             "KD_event_str", "Str_event_str", "Td_event_str", "Sub_event_str",
             "Fighter",
@@ -225,6 +231,7 @@ class UfcDataCleaner(object):
         self._parse_upcoming_fights()
 
         doubled_events_df = self._get_doubled_event_df()
+        assert doubled_events_df.shape[0] == 2 * self.clean_events_df.shape[0]
         # merge events with descriptions
         ufc_df = doubled_events_df.merge(
             self.clean_desc_df,
@@ -244,6 +251,7 @@ class UfcDataCleaner(object):
             how="left",
             suffixes=("", "_opp")
         )
+        assert ufc_df.shape[0] == doubled_events_df.shape[0]
         # add strikes for fighter and opponent
         ufc_df = ufc_df.merge(
             self.clean_strikes_df,
@@ -257,6 +265,7 @@ class UfcDataCleaner(object):
             how="left",
             suffixes=("", "_opp")
         )
+        assert ufc_df.shape[0] == doubled_events_df.shape[0]
         ufc_df = pd.concat([ufc_df, self.clean_upcoming_fights_df], axis=0)\
             .reset_index(drop=True)
         ufc_df["is_upcoming"] = ufc_df["is_upcoming"].fillna(False)

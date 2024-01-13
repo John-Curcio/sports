@@ -81,9 +81,17 @@ class EspnDataCleaner(object):
             opponent_id=self.match_df["OpponentID"],
             date=self.match_df["Date"]
         ))
+        # espn has many cases where the same fight appears to be listed multiple times
+        # eg https://www.espn.com/mma/fighter/history/_/id/3154313 several cases of this
+        # eg https://www.espn.com/mma/fighter/history/_/id/2335660/thiago-alves jan 1, 2001
+        # I just drop them all
         self.clean_match_df = match_df.groupby("fight_id").first()\
             .reset_index()\
             .rename(columns={"Res.":"FighterResult"})
+        # Even if the same match is recorded twice, I'd rather only keep one copy at this point.
+        # That way, when we double the data later, we can ensure the flipped rows are 
+        # actually equivalent.
+        assert self.clean_match_df["fight_id"].value_counts().max() == 1
         return self.clean_match_df
 
     def _parse_stats(self):
@@ -133,13 +141,14 @@ class EspnDataCleaner(object):
             .first()\
             .reset_index()\
             .drop(columns=["p_stats_zero"])
+        # I grouped by [fight_id, FighterID, OpponentID] because 
+        assert self.clean_stats_df["fight_id"].value_counts().max() <= 2
         return self.clean_stats_df
 
     def _get_doubled_matches(self):
         if self.clean_match_df is None:
             self._parse_matches()
         # clean_match_df contains exactly one row per fight
-
         match_complement_df = self.clean_match_df.rename(columns={
             "FighterID":"OpponentID",
             "OpponentID":"FighterID",
@@ -152,6 +161,7 @@ class EspnDataCleaner(object):
         doubled_match_df = pd.concat([self.clean_match_df, match_complement_df], axis=0)\
             .reset_index(drop=True)
         # doubled_match_df = doubled_match_df.drop(columns=["Opponent"])
+        assert (doubled_match_df["fight_id"].value_counts() == 2).all()
         return doubled_match_df
 
         
@@ -191,9 +201,12 @@ class EspnDataCleaner(object):
             on="FighterID",
             how="left",
         ).merge(
-            self.clean_bio_df,
-            left_on="OpponentID",
-            right_on="FighterID",
+            self.clean_bio_df.rename(columns={
+                "FighterID": "OpponentID",
+            }),
+            # left_on="OpponentID",
+            # right_on="FighterID",
+            on="OpponentID",
             how="left",
             suffixes=("", "_opp"),
         )
@@ -206,5 +219,7 @@ class EspnDataCleaner(object):
             espn_df[col] = espn_df[col].str.lower().str.strip()
 
         self.espn_df = espn_df
+        assert (self.espn_df["fight_id"].value_counts() == 2).all()
+        assert self.espn_df.shape[0] == doubled_match_df.shape[0]
         return self.espn_df
 
