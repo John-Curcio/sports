@@ -161,6 +161,8 @@ class BaseFighterPowerWrapper(BaseEloWrapper):
         represented twice, once for each (Fighter, Opponent) permutation.
         Returns a dataframe with the same number of rows as the input df.
         df: pd.DataFrame
+        min_date: For each date d starting from min_date, fit the model on all data prior to d,
+            and predict the outcome of all fights on date d.
         """
         print("trying again with a just one estimator, calling estimator.fit_transform_all, which just uses a for loop")
         assert (df["fight_id"].value_counts() == 2).all()
