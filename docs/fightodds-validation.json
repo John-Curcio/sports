@@ -1,0 +1,508 @@
+{
+  "verified_at": "2026-10-02T22:48:22.671983+00:00",
+  "bounded_samples": [
+    {
+      "event": {
+        "date": "2023-03-04",
+        "id": "RXZlbnROb2RlOjQ0NTA=",
+        "isCancelled": false,
+        "name": "UFC 285: Jones vs. Gane",
+        "pk": 4450,
+        "promotion": {
+          "id": "UHJvbW90aW9uTm9kZTox",
+          "shortName": "UFC",
+          "slug": "ufc"
+        },
+        "slug": "ufc-285-jones-vs-gane",
+        "startTime": "2023-03-04T08:00:00+00:00",
+        "temp": false
+      },
+      "selected_fight": "jon-jones-vs-cyril-gane-43970",
+      "offers": 376,
+      "live_report": {
+        "run_id": 2,
+        "endpoint": "https://api.fightodds.io/gql",
+        "requests": 42,
+        "coverage": [
+          {
+            "scope": "event:ufc-285-jones-vs-gane",
+            "event_id": "RXZlbnROb2RlOjQ0NTA=",
+            "offers_complete": true,
+            "prop_groups_complete": null,
+            "moneyline": {
+              "complete": 0,
+              "unavailable": 0,
+              "failed": 0,
+              "outcomes": 0,
+              "observations": 0
+            },
+            "prop": {
+              "complete": 0,
+              "unavailable": 0,
+              "failed": 0,
+              "outcomes": 0,
+              "observations": 0
+            }
+          },
+          {
+            "scope": "jon-jones-vs-cyril-gane-43970",
+            "event_id": "RXZlbnROb2RlOjQ0NTA=",
+            "offers_complete": true,
+            "prop_groups_complete": true,
+            "moneyline": {
+              "complete": 34,
+              "unavailable": 0,
+              "failed": 0,
+              "outcomes": 34,
+              "observations": 2070
+            },
+            "prop": {
+              "complete": 466,
+              "unavailable": 0,
+              "failed": 0,
+              "outcomes": 466,
+              "observations": 1949
+            },
+            "prop_groups": 97,
+            "groups_without_offers": []
+          }
+        ],
+        "failures": []
+      },
+      "cached_replay": {
+        "run_id": 7,
+        "endpoint": "https://api.fightodds.io/gql",
+        "requests": 0,
+        "coverage": [
+          {
+            "scope": "event:ufc-285-jones-vs-gane",
+            "event_id": "RXZlbnROb2RlOjQ0NTA=",
+            "offers_complete": true,
+            "prop_groups_complete": null,
+            "moneyline": {
+              "complete": 0,
+              "unavailable": 0,
+              "failed": 0,
+              "outcomes": 0,
+              "observations": 0
+            },
+            "prop": {
+              "complete": 0,
+              "unavailable": 0,
+              "failed": 0,
+              "outcomes": 0,
+              "observations": 0
+            }
+          },
+          {
+            "scope": "jon-jones-vs-cyril-gane-43970",
+            "event_id": "RXZlbnROb2RlOjQ0NTA=",
+            "offers_complete": true,
+            "prop_groups_complete": true,
+            "moneyline": {
+              "complete": 34,
+              "unavailable": 0,
+              "failed": 0,
+              "outcomes": 34,
+              "observations": 2070
+            },
+            "prop": {
+              "complete": 466,
+              "unavailable": 0,
+              "failed": 0,
+              "outcomes": 466,
+              "observations": 1949
+            },
+            "prop_groups": 97,
+            "groups_without_offers": []
+          }
+        ],
+        "failures": []
+      },
+      "snapshot_rows": 500,
+      "coverage_gaps": [
+        "No event-linked offers returned"
+      ],
+      "source_date_uncertainty": true,
+      "draftkings_jones_series": {
+        "points": 37,
+        "first": {
+          "id": "T2Rkc05vZGU6MTY3MTc1NTE=",
+          "outcome_id": "T3V0Y29tZU5vZGU6NDAzMjUzMQ==",
+          "timestamp": "2023-01-15T10:40:16.332947+00:00",
+          "odds": 130,
+          "response_id": 12
+        },
+        "last": {
+          "id": "T2Rkc05vZGU6MTY5MDE2Njk=",
+          "outcome_id": "T3V0Y29tZU5vZGU6NDAzMjUzMQ==",
+          "timestamp": "2023-03-05T05:41:46.442102+00:00",
+          "odds": -185,
+          "response_id": 12
+        }
+      },
+      "draftkings_midnight": [
+        {
+          "cutoff": "2023-03-04T00:00:00-05:00",
+          "basis": "source_date_assumed_eastern_day",
+          "timing_uncertain": true,
+          "possible_after_start": false,
+          "event_id": "RXZlbnROb2RlOjQ0NTA=",
+          "source_date": "2023-03-04",
+          "source_start_time": "2023-03-04T08:00:00+00:00",
+          "fight_id": "RmlnaHROb2RlOjQzOTcw",
+          "offer_id": "T2ZmZXJOb2RlOjEwMjA2NTcyNQ==",
+          "market_id": "b4b5eb4259bc69a247a5988819159289f89c0c60e007e3d924d3bf4f94315a30",
+          "market_kind": "moneyline",
+          "market": {
+            "category": "A_1",
+            "description": "",
+            "event_id": "RXZlbnROb2RlOjQ0NTA=",
+            "fight_id": "RmlnaHROb2RlOjQzOTcw",
+            "id": "b4b5eb4259bc69a247a5988819159289f89c0c60e007e3d924d3bf4f94315a30",
+            "line": null,
+            "line_basis": "offer_type_value",
+            "market_kind": "moneyline",
+            "notDescription": "",
+            "offerTypeId": "STRAIGHT",
+            "offer_type_id": "T2ZmZXJUeXBlTm9kZTox",
+            "subCategory": "A_0",
+            "value": null
+          },
+          "sportsbook": {
+            "id": "U3BvcnRzYm9va05vZGU6MjQ=",
+            "shortName": "DraftKings",
+            "slug": "draftkings"
+          },
+          "prop_labels": [
+            {
+              "propName1": "Jon Jones",
+              "propName2": "Cyril Gan\u00e9"
+            }
+          ],
+          "outcome_id": "T3V0Y29tZU5vZGU6NDAzMjUzMQ==",
+          "outcome_name": "Jon Jones",
+          "current_offer_status": "O",
+          "current_offer_disabled": false,
+          "fighter_id": "RmlnaHRlck5vZGU6NzEx",
+          "is_not": false,
+          "odds": -175,
+          "observation_timestamp": "2023-03-03T23:11:42.979578+00:00",
+          "quote_age_seconds": 20897.020422,
+          "stale": null,
+          "availability_at_cutoff": "unknown",
+          "response_id": 12,
+          "history_state": "complete",
+          "selection_state": "selected"
+        },
+        {
+          "cutoff": "2023-03-04T00:00:00-05:00",
+          "basis": "source_date_assumed_eastern_day",
+          "timing_uncertain": true,
+          "possible_after_start": false,
+          "event_id": "RXZlbnROb2RlOjQ0NTA=",
+          "source_date": "2023-03-04",
+          "source_start_time": "2023-03-04T08:00:00+00:00",
+          "fight_id": "RmlnaHROb2RlOjQzOTcw",
+          "offer_id": "T2ZmZXJOb2RlOjEwMjA2NTcyNQ==",
+          "market_id": "b4b5eb4259bc69a247a5988819159289f89c0c60e007e3d924d3bf4f94315a30",
+          "market_kind": "moneyline",
+          "market": {
+            "category": "A_1",
+            "description": "",
+            "event_id": "RXZlbnROb2RlOjQ0NTA=",
+            "fight_id": "RmlnaHROb2RlOjQzOTcw",
+            "id": "b4b5eb4259bc69a247a5988819159289f89c0c60e007e3d924d3bf4f94315a30",
+            "line": null,
+            "line_basis": "offer_type_value",
+            "market_kind": "moneyline",
+            "notDescription": "",
+            "offerTypeId": "STRAIGHT",
+            "offer_type_id": "T2ZmZXJUeXBlTm9kZTox",
+            "subCategory": "A_0",
+            "value": null
+          },
+          "sportsbook": {
+            "id": "U3BvcnRzYm9va05vZGU6MjQ=",
+            "shortName": "DraftKings",
+            "slug": "draftkings"
+          },
+          "prop_labels": [
+            {
+              "propName1": "Jon Jones",
+              "propName2": "Cyril Gan\u00e9"
+            }
+          ],
+          "outcome_id": "T3V0Y29tZU5vZGU6NDAzMjUzMg==",
+          "outcome_name": "Ciryl Gane",
+          "current_offer_status": "O",
+          "current_offer_disabled": false,
+          "fighter_id": "RmlnaHRlck5vZGU6MzAxOTA=",
+          "is_not": false,
+          "odds": 150,
+          "observation_timestamp": "2023-03-03T23:11:42.990422+00:00",
+          "quote_age_seconds": 20897.009578,
+          "stale": null,
+          "availability_at_cutoff": "unknown",
+          "response_id": 12,
+          "history_state": "complete",
+          "selection_state": "selected"
+        }
+      ]
+    },
+    {
+      "event": {
+        "date": "2023-02-11",
+        "id": "RXZlbnROb2RlOjQ0Mzg=",
+        "isCancelled": false,
+        "name": "UFC 284: Makhachev vs. Volkanovski",
+        "pk": 4438,
+        "promotion": {
+          "id": "UHJvbW90aW9uTm9kZTox",
+          "shortName": "UFC",
+          "slug": "ufc"
+        },
+        "slug": "ufc-284-makhachev-vs-volkanovski",
+        "startTime": "2023-02-11T08:00:00+00:00",
+        "temp": false
+      },
+      "selected_fight": "islam-makhachev-vs-alex-volkanovski-43124",
+      "offers": 331,
+      "live_report": {
+        "run_id": 6,
+        "endpoint": "https://api.fightodds.io/gql",
+        "requests": 84,
+        "coverage": [
+          {
+            "scope": "event:ufc-284-makhachev-vs-volkanovski",
+            "event_id": "RXZlbnROb2RlOjQ0Mzg=",
+            "offers_complete": true,
+            "prop_groups_complete": null,
+            "moneyline": {
+              "complete": 0,
+              "unavailable": 0,
+              "failed": 0,
+              "outcomes": 0,
+              "observations": 0
+            },
+            "prop": {
+              "complete": 0,
+              "unavailable": 0,
+              "failed": 0,
+              "outcomes": 0,
+              "observations": 0
+            }
+          },
+          {
+            "scope": "islam-makhachev-vs-alex-volkanovski-43124",
+            "event_id": "RXZlbnROb2RlOjQ0Mzg=",
+            "offers_complete": true,
+            "prop_groups_complete": true,
+            "moneyline": {
+              "complete": 36,
+              "unavailable": 0,
+              "failed": 0,
+              "outcomes": 36,
+              "observations": 12324
+            },
+            "prop": {
+              "complete": 427,
+              "unavailable": 0,
+              "failed": 0,
+              "outcomes": 427,
+              "observations": 2025
+            },
+            "prop_groups": 67,
+            "groups_without_offers": []
+          }
+        ],
+        "failures": []
+      },
+      "cached_replay": {
+        "run_id": 8,
+        "endpoint": "https://api.fightodds.io/gql",
+        "requests": 0,
+        "coverage": [
+          {
+            "scope": "event:ufc-284-makhachev-vs-volkanovski",
+            "event_id": "RXZlbnROb2RlOjQ0Mzg=",
+            "offers_complete": true,
+            "prop_groups_complete": null,
+            "moneyline": {
+              "complete": 0,
+              "unavailable": 0,
+              "failed": 0,
+              "outcomes": 0,
+              "observations": 0
+            },
+            "prop": {
+              "complete": 0,
+              "unavailable": 0,
+              "failed": 0,
+              "outcomes": 0,
+              "observations": 0
+            }
+          },
+          {
+            "scope": "islam-makhachev-vs-alex-volkanovski-43124",
+            "event_id": "RXZlbnROb2RlOjQ0Mzg=",
+            "offers_complete": true,
+            "prop_groups_complete": true,
+            "moneyline": {
+              "complete": 36,
+              "unavailable": 0,
+              "failed": 0,
+              "outcomes": 36,
+              "observations": 12324
+            },
+            "prop": {
+              "complete": 427,
+              "unavailable": 0,
+              "failed": 0,
+              "outcomes": 427,
+              "observations": 2025
+            },
+            "prop_groups": 67,
+            "groups_without_offers": []
+          }
+        ],
+        "failures": []
+      },
+      "snapshot_rows": 463,
+      "coverage_gaps": [
+        "No event-linked offers returned"
+      ],
+      "source_date_uncertainty": true
+    },
+    {
+      "event": {
+        "date": "2026-10-03",
+        "id": "RXZlbnROb2RlOjk3NDM=",
+        "isCancelled": false,
+        "name": "UFC 332: Silva vs. Wang",
+        "pk": 9743,
+        "promotion": {
+          "id": "UHJvbW90aW9uTm9kZTox",
+          "shortName": "UFC",
+          "slug": "ufc"
+        },
+        "slug": "ufc-332-silva-vs-wang",
+        "startTime": "2026-10-03T00:00:00+00:00",
+        "temp": false
+      },
+      "selected_fight": "natalia-cristina-da-silva-vs-cong-wang-81444",
+      "offers": 919,
+      "live_report": {
+        "run_id": 2,
+        "endpoint": "https://api.fightodds.io/gql",
+        "requests": 92,
+        "coverage": [
+          {
+            "scope": "event:ufc-332-silva-vs-wang",
+            "event_id": "RXZlbnROb2RlOjk3NDM=",
+            "offers_complete": true,
+            "prop_groups_complete": null,
+            "moneyline": {
+              "complete": 0,
+              "unavailable": 0,
+              "failed": 0,
+              "outcomes": 0,
+              "observations": 0
+            },
+            "prop": {
+              "complete": 0,
+              "unavailable": 0,
+              "failed": 0,
+              "outcomes": 0,
+              "observations": 0
+            }
+          },
+          {
+            "scope": "natalia-cristina-da-silva-vs-cong-wang-81444",
+            "event_id": "RXZlbnROb2RlOjk3NDM=",
+            "offers_complete": true,
+            "prop_groups_complete": true,
+            "moneyline": {
+              "complete": 58,
+              "unavailable": 0,
+              "failed": 0,
+              "outcomes": 58,
+              "observations": 1325
+            },
+            "prop": {
+              "complete": 1086,
+              "unavailable": 0,
+              "failed": 0,
+              "outcomes": 1086,
+              "observations": 9018
+            },
+            "prop_groups": 154,
+            "groups_without_offers": []
+          }
+        ],
+        "failures": []
+      },
+      "cached_replay": {
+        "run_id": 3,
+        "endpoint": "https://api.fightodds.io/gql",
+        "requests": 0,
+        "coverage": [
+          {
+            "scope": "event:ufc-332-silva-vs-wang",
+            "event_id": "RXZlbnROb2RlOjk3NDM=",
+            "offers_complete": true,
+            "prop_groups_complete": null,
+            "moneyline": {
+              "complete": 0,
+              "unavailable": 0,
+              "failed": 0,
+              "outcomes": 0,
+              "observations": 0
+            },
+            "prop": {
+              "complete": 0,
+              "unavailable": 0,
+              "failed": 0,
+              "outcomes": 0,
+              "observations": 0
+            }
+          },
+          {
+            "scope": "natalia-cristina-da-silva-vs-cong-wang-81444",
+            "event_id": "RXZlbnROb2RlOjk3NDM=",
+            "offers_complete": true,
+            "prop_groups_complete": true,
+            "moneyline": {
+              "complete": 58,
+              "unavailable": 0,
+              "failed": 0,
+              "outcomes": 58,
+              "observations": 1325
+            },
+            "prop": {
+              "complete": 1086,
+              "unavailable": 0,
+              "failed": 0,
+              "outcomes": 1086,
+              "observations": 9018
+            },
+            "prop_groups": 154,
+            "groups_without_offers": []
+          }
+        ],
+        "failures": []
+      },
+      "snapshot_rows": 1144,
+      "coverage_gaps": [
+        "No event-linked offers returned"
+      ],
+      "source_date_uncertainty": true
+    }
+  ],
+  "limits_and_failures_observed": [
+    "HTTP 429 during concurrent validation; sequential cached resume succeeded",
+    "50-node history pages reached 100-page cap for two UFC 284 outcomes; 100-node pages with a 300-page cap completed",
+    "API rejects first=500 on allFights; collector now enforces page size 1..100",
+    "Offer.outcomes rejects first despite introspection; all collected nested connections reported hasNextPage=false"
+  ]
+}

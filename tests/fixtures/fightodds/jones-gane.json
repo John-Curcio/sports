@@ -1,0 +1,773 @@
+{
+  "event": {
+    "date": "2023-03-04",
+    "id": "RXZlbnROb2RlOjQ0NTA=",
+    "isCancelled": false,
+    "name": "UFC 285: Jones vs. Gane",
+    "pk": 4450,
+    "promotion": {
+      "id": "UHJvbW90aW9uTm9kZTox",
+      "shortName": "UFC",
+      "slug": "ufc"
+    },
+    "slug": "ufc-285-jones-vs-gane",
+    "startTime": "2023-03-04T08:00:00+00:00",
+    "temp": false
+  },
+  "fight": {
+    "event_id": "RXZlbnROb2RlOjQ0NTA=",
+    "fightType": "ME",
+    "fighter1": {
+      "fightmetricUrl": "http://www.ufcstats.com/fighter-details/07f72a2a7591b409",
+      "firstName": "Jon",
+      "id": "RmlnaHRlck5vZGU6NzEx",
+      "lastName": "Jones",
+      "slug": "jon-jones-711"
+    },
+    "fighter2": {
+      "fightmetricUrl": "http://www.ufcstats.com/fighter-details/787bb1f087ccff8a",
+      "firstName": "Cyril",
+      "id": "RmlnaHRlck5vZGU6MzAxOTA=",
+      "lastName": "Gan\u00e9",
+      "slug": "cyril-gane-30190"
+    },
+    "id": "RmlnaHROb2RlOjQzOTcw",
+    "isCancelled": false,
+    "pk": 43970,
+    "slug": "jon-jones-vs-cyril-gane-43970"
+  },
+  "offers": [
+    {
+      "createdAt": "2023-03-05T05:41:46.427142+00:00",
+      "disabled": false,
+      "event": null,
+      "event_id": "RXZlbnROb2RlOjQ0NTA=",
+      "fight": {
+        "id": "RmlnaHROb2RlOjQzOTcw",
+        "slug": "jon-jones-vs-cyril-gane-43970"
+      },
+      "id": "T2ZmZXJOb2RlOjEwMjA2NTcyNQ==",
+      "market_id": "b4b5eb4259bc69a247a5988819159289f89c0c60e007e3d924d3bf4f94315a30",
+      "market_kind": "moneyline",
+      "offerType": {
+        "category": "A_1",
+        "description": "",
+        "id": "T2ZmZXJUeXBlTm9kZTox",
+        "notDescription": "",
+        "offerTypeId": "STRAIGHT",
+        "subCategory": "A_0",
+        "value": null
+      },
+      "outcomes": {
+        "edges": [
+          {
+            "cursor": "YXJyYXljb25uZWN0aW9uOjA=",
+            "node": {
+              "fighter": {
+                "id": "RmlnaHRlck5vZGU6MzAxOTA=",
+                "slug": "cyril-gane-30190"
+              },
+              "id": "T3V0Y29tZU5vZGU6NDAzMjUzMg==",
+              "isNot": false,
+              "name": "Ciryl Gane",
+              "odds": 150,
+              "oddsBest": 155,
+              "oddsOpen": -150,
+              "oddsWorst": -150
+            }
+          },
+          {
+            "cursor": "YXJyYXljb25uZWN0aW9uOjE=",
+            "node": {
+              "fighter": {
+                "id": "RmlnaHRlck5vZGU6NzEx",
+                "slug": "jon-jones-711"
+              },
+              "id": "T3V0Y29tZU5vZGU6NDAzMjUzMQ==",
+              "isNot": false,
+              "name": "Jon Jones",
+              "odds": -185,
+              "oddsBest": 130,
+              "oddsOpen": 130,
+              "oddsWorst": -185
+            }
+          }
+        ],
+        "pageInfo": {
+          "endCursor": "YXJyYXljb25uZWN0aW9uOjE=",
+          "hasNextPage": false
+        }
+      },
+      "sportsbook": {
+        "id": "U3BvcnRzYm9va05vZGU6MjQ=",
+        "shortName": "DraftKings",
+        "slug": "draftkings"
+      },
+      "status": "O",
+      "timestamp": "2023-03-05T05:42:00.158641+00:00",
+      "value": null
+    },
+    {
+      "createdAt": "2023-02-20T19:21:21.541436+00:00",
+      "disabled": false,
+      "event": null,
+      "event_id": "RXZlbnROb2RlOjQ0NTA=",
+      "fight": {
+        "id": "RmlnaHROb2RlOjQzOTcw",
+        "slug": "jon-jones-vs-cyril-gane-43970"
+      },
+      "id": "T2ZmZXJOb2RlOjEwMjA1NDkyOA==",
+      "market_id": "7914de71009f59e5fa4cb5d17f576603df6673a83e7ad50c6cbffc4b6e30ff64",
+      "market_kind": "prop",
+      "offerType": {
+        "category": "A_4",
+        "description": "Over 4.5 rounds",
+        "id": "T2ZmZXJUeXBlTm9kZToyNg==",
+        "notDescription": "Under 4.5 rounds",
+        "offerTypeId": "OVERUNDER_4.5",
+        "subCategory": "A_1",
+        "value": "4.5"
+      },
+      "outcomes": {
+        "edges": [
+          {
+            "cursor": "YXJyYXljb25uZWN0aW9uOjA=",
+            "node": {
+              "fighter": null,
+              "id": "T3V0Y29tZU5vZGU6NDAxNTY2NA==",
+              "isNot": false,
+              "name": "Over 4.5",
+              "odds": -145,
+              "oddsBest": -140,
+              "oddsOpen": -140,
+              "oddsWorst": -150
+            }
+          },
+          {
+            "cursor": "YXJyYXljb25uZWN0aW9uOjE=",
+            "node": {
+              "fighter": null,
+              "id": "T3V0Y29tZU5vZGU6NDAxNTY2NQ==",
+              "isNot": true,
+              "name": "Under 4.5",
+              "odds": 115,
+              "oddsBest": 120,
+              "oddsOpen": 110,
+              "oddsWorst": 110
+            }
+          }
+        ],
+        "pageInfo": {
+          "endCursor": "YXJyYXljb25uZWN0aW9uOjE=",
+          "hasNextPage": false
+        }
+      },
+      "sportsbook": {
+        "id": "U3BvcnRzYm9va05vZGU6Mjg=",
+        "shortName": "BetUS",
+        "slug": "betus"
+      },
+      "status": "O",
+      "timestamp": "2023-02-28T17:15:30.428269+00:00",
+      "value": null
+    },
+    {
+      "createdAt": "2023-02-26T00:18:39.162551+00:00",
+      "disabled": false,
+      "event": null,
+      "event_id": "RXZlbnROb2RlOjQ0NTA=",
+      "fight": {
+        "id": "RmlnaHROb2RlOjQzOTcw",
+        "slug": "jon-jones-vs-cyril-gane-43970"
+      },
+      "id": "T2ZmZXJOb2RlOjEwMjA2MDc0Nw==",
+      "market_id": "29d65c25c6910e47564c3020855894bdf9e6600bc1b00ec44f0414319edbecf4",
+      "market_kind": "prop",
+      "offerType": null,
+      "outcomes": {
+        "edges": [
+          {
+            "cursor": "YXJyYXljb25uZWN0aW9uOjA=",
+            "node": {
+              "fighter": null,
+              "id": "T3V0Y29tZU5vZGU6NDAyNDg5Nw==",
+              "isNot": false,
+              "name": "Draw",
+              "odds": 4500,
+              "oddsBest": 4500,
+              "oddsOpen": 4500,
+              "oddsWorst": 4500
+            }
+          }
+        ],
+        "pageInfo": {
+          "endCursor": "YXJyYXljb25uZWN0aW9uOjA=",
+          "hasNextPage": false
+        }
+      },
+      "sportsbook": {
+        "id": "U3BvcnRzYm9va05vZGU6MTI=",
+        "shortName": "Unibet",
+        "slug": "unibet"
+      },
+      "status": "O",
+      "timestamp": "2023-02-26T00:30:00.215394+00:00",
+      "value": null
+    },
+    {
+      "createdAt": "2023-03-03T22:20:31.876298+00:00",
+      "disabled": false,
+      "event": null,
+      "event_id": "RXZlbnROb2RlOjQ0NTA=",
+      "fight": {
+        "id": "RmlnaHROb2RlOjQzOTcw",
+        "slug": "jon-jones-vs-cyril-gane-43970"
+      },
+      "id": "T2ZmZXJOb2RlOjEwMjA2NDg1MQ==",
+      "market_id": "9a144243125b438e10e74c8b5429aeaa53aaee310b6925906a33567be1cea66b",
+      "market_kind": "prop",
+      "offerType": {
+        "category": "A_7",
+        "description": "Straight (Round 1 Only)",
+        "id": "T2ZmZXJUeXBlTm9kZToxNzY=",
+        "notDescription": "Straight (Round 1 Only)",
+        "offerTypeId": "STRAIGHT_R_1_ONLY",
+        "subCategory": "A_27",
+        "value": "1.0"
+      },
+      "outcomes": {
+        "edges": [
+          {
+            "cursor": "YXJyYXljb25uZWN0aW9uOjA=",
+            "node": {
+              "fighter": {
+                "id": "RmlnaHRlck5vZGU6MzAxOTA=",
+                "slug": "cyril-gane-30190"
+              },
+              "id": "T3V0Y29tZU5vZGU6NDAzMTE1Ng==",
+              "isNot": false,
+              "name": "Ciryl Gane",
+              "odds": 150,
+              "oddsBest": 150,
+              "oddsOpen": 140,
+              "oddsWorst": 140
+            }
+          },
+          {
+            "cursor": "YXJyYXljb25uZWN0aW9uOjE=",
+            "node": {
+              "fighter": {
+                "id": "RmlnaHRlck5vZGU6NzEx",
+                "slug": "jon-jones-711"
+              },
+              "id": "T3V0Y29tZU5vZGU6NDAzMTE1NQ==",
+              "isNot": false,
+              "name": "Jon Jones",
+              "odds": -200,
+              "oddsBest": -190,
+              "oddsOpen": -190,
+              "oddsWorst": -200
+            }
+          }
+        ],
+        "pageInfo": {
+          "endCursor": "YXJyYXljb25uZWN0aW9uOjE=",
+          "hasNextPage": false
+        }
+      },
+      "sportsbook": {
+        "id": "U3BvcnRzYm9va05vZGU6MjQ=",
+        "shortName": "DraftKings",
+        "slug": "draftkings"
+      },
+      "status": "O",
+      "timestamp": "2023-03-04T14:21:52.039348+00:00",
+      "value": null
+    }
+  ],
+  "histories": {
+    "T3V0Y29tZU5vZGU6NDAzMjUzMg==": [
+      {
+        "id": "T2Rkc05vZGU6MTY3MTc1NTI=",
+        "odds": -150,
+        "timestamp": "2023-01-15T10:40:16.341215+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3MTc4OTA=",
+        "odds": -140,
+        "timestamp": "2023-01-15T11:20:54.202230+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3MTc5NzY=",
+        "odds": -135,
+        "timestamp": "2023-01-15T11:30:58.879342+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3MTg4ODU=",
+        "odds": -130,
+        "timestamp": "2023-01-15T13:11:06.334136+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3MTkwNDk=",
+        "odds": -125,
+        "timestamp": "2023-01-15T13:30:59.862585+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3MTk5ODI=",
+        "odds": -120,
+        "timestamp": "2023-01-15T15:20:26.680995+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3MjEyODQ=",
+        "odds": -115,
+        "timestamp": "2023-01-15T17:31:22.058530+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3MjM2NTU=",
+        "odds": -110,
+        "timestamp": "2023-01-16T00:31:27.554475+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3MzE2OTQ=",
+        "odds": 100,
+        "timestamp": "2023-01-18T04:30:17.252937+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3MzY2NTk=",
+        "odds": -105,
+        "timestamp": "2023-01-19T09:21:24.522823+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3MzY2OTI=",
+        "odds": 100,
+        "timestamp": "2023-01-19T09:32:04.524698+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3NTAwMTM=",
+        "odds": 105,
+        "timestamp": "2023-01-22T20:21:00.376062+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3ODYwMTk=",
+        "odds": 110,
+        "timestamp": "2023-02-04T12:12:38.208095+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3ODYwOTg=",
+        "odds": 105,
+        "timestamp": "2023-02-04T12:41:35.091620+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3ODg2MDk=",
+        "odds": 115,
+        "timestamp": "2023-02-04T22:11:36.799024+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3ODg4OTM=",
+        "odds": 120,
+        "timestamp": "2023-02-04T22:41:59.066407+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3OTg2NTE=",
+        "odds": 130,
+        "timestamp": "2023-02-07T19:10:42.516153+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4NDM2MjE=",
+        "odds": 135,
+        "timestamp": "2023-02-20T05:01:31.982222+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4NDQ1Mjc=",
+        "odds": 140,
+        "timestamp": "2023-02-20T20:01:46.793792+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4NDYyODY=",
+        "odds": 135,
+        "timestamp": "2023-02-21T02:52:20.413417+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4ODAxOTg=",
+        "odds": 140,
+        "timestamp": "2023-03-01T16:49:50.079161+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4ODI0OTM=",
+        "odds": 135,
+        "timestamp": "2023-03-02T01:20:45.834584+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4ODI4NTI=",
+        "odds": 140,
+        "timestamp": "2023-03-02T02:50:40.640080+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4ODQwNDE=",
+        "odds": 145,
+        "timestamp": "2023-03-02T14:51:25.403648+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4ODQxMDM=",
+        "odds": 140,
+        "timestamp": "2023-03-02T15:01:28.092114+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4ODUwNDc=",
+        "odds": 145,
+        "timestamp": "2023-03-02T19:51:30.990525+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4ODY1MTk=",
+        "odds": 150,
+        "timestamp": "2023-03-03T04:32:41.488531+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4ODcxMjY=",
+        "odds": 145,
+        "timestamp": "2023-03-03T09:52:40.436714+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4OTAxMTQ=",
+        "odds": 150,
+        "timestamp": "2023-03-03T20:11:56.156515+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4OTE4ODc=",
+        "odds": 140,
+        "timestamp": "2023-03-03T22:58:46.989655+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4OTIyOTM=",
+        "odds": 150,
+        "timestamp": "2023-03-03T23:11:42.990422+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4OTc3NDQ=",
+        "odds": 145,
+        "timestamp": "2023-03-04T21:21:27.459466+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4OTkyMzk=",
+        "odds": 140,
+        "timestamp": "2023-03-05T00:21:47.412033+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4OTk2MzU=",
+        "odds": 145,
+        "timestamp": "2023-03-05T01:11:45.213578+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY5MDA0Nzg=",
+        "odds": 150,
+        "timestamp": "2023-03-05T02:21:54.503105+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY5MDEwMTg=",
+        "odds": 155,
+        "timestamp": "2023-03-05T03:41:53.773849+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY5MDE2NzA=",
+        "odds": 150,
+        "timestamp": "2023-03-05T05:41:46.447585+00:00"
+      }
+    ],
+    "T3V0Y29tZU5vZGU6NDAzMjUzMQ==": [
+      {
+        "id": "T2Rkc05vZGU6MTY3MTc1NTE=",
+        "odds": 130,
+        "timestamp": "2023-01-15T10:40:16.332947+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3MTc4ODk=",
+        "odds": 120,
+        "timestamp": "2023-01-15T11:20:54.182754+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3MTc5NzU=",
+        "odds": 115,
+        "timestamp": "2023-01-15T11:30:58.871854+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3MTg4ODQ=",
+        "odds": 110,
+        "timestamp": "2023-01-15T13:11:06.321683+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3MTkwNDg=",
+        "odds": 105,
+        "timestamp": "2023-01-15T13:30:59.849633+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3MTk5ODE=",
+        "odds": 100,
+        "timestamp": "2023-01-15T15:20:26.673428+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3MjEyODM=",
+        "odds": -105,
+        "timestamp": "2023-01-15T17:31:22.050553+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3MjM2NTQ=",
+        "odds": -110,
+        "timestamp": "2023-01-16T00:31:27.547067+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3MzE2OTM=",
+        "odds": -120,
+        "timestamp": "2023-01-18T04:30:17.244817+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3MzY2NTg=",
+        "odds": -115,
+        "timestamp": "2023-01-19T09:21:24.514979+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3MzY2OTE=",
+        "odds": -120,
+        "timestamp": "2023-01-19T09:32:04.509700+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3NTAwMTI=",
+        "odds": -125,
+        "timestamp": "2023-01-22T20:21:00.314093+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3ODYwMTg=",
+        "odds": -130,
+        "timestamp": "2023-02-04T12:12:38.152067+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3ODYwOTc=",
+        "odds": -125,
+        "timestamp": "2023-02-04T12:41:35.081319+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3ODg2MDg=",
+        "odds": -135,
+        "timestamp": "2023-02-04T22:11:36.786436+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3ODg4OTI=",
+        "odds": -140,
+        "timestamp": "2023-02-04T22:41:59.054532+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY3OTg2NTA=",
+        "odds": -150,
+        "timestamp": "2023-02-07T19:10:42.465928+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4NDM2MjA=",
+        "odds": -155,
+        "timestamp": "2023-02-20T05:01:31.964061+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4NDQ1MjY=",
+        "odds": -165,
+        "timestamp": "2023-02-20T20:01:46.787398+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4NDYyODU=",
+        "odds": -155,
+        "timestamp": "2023-02-21T02:52:20.407200+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4ODAxOTc=",
+        "odds": -165,
+        "timestamp": "2023-03-01T16:49:49.936526+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4ODI0OTI=",
+        "odds": -155,
+        "timestamp": "2023-03-02T01:20:45.813596+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4ODI4NTE=",
+        "odds": -165,
+        "timestamp": "2023-03-02T02:50:40.604123+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4ODQwNDA=",
+        "odds": -170,
+        "timestamp": "2023-03-02T14:51:25.397164+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4ODQxMDI=",
+        "odds": -165,
+        "timestamp": "2023-03-02T15:01:28.085250+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4ODUwNDY=",
+        "odds": -170,
+        "timestamp": "2023-03-02T19:51:30.978587+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4ODY1MTg=",
+        "odds": -175,
+        "timestamp": "2023-03-03T04:32:41.476564+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4ODcxMjU=",
+        "odds": -170,
+        "timestamp": "2023-03-03T09:52:40.419169+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4OTAxMTM=",
+        "odds": -175,
+        "timestamp": "2023-03-03T20:11:56.149486+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4OTE4ODY=",
+        "odds": -165,
+        "timestamp": "2023-03-03T22:58:46.766700+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4OTIyOTI=",
+        "odds": -175,
+        "timestamp": "2023-03-03T23:11:42.979578+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4OTc3NDM=",
+        "odds": -170,
+        "timestamp": "2023-03-04T21:21:27.454052+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4OTkyMzg=",
+        "odds": -165,
+        "timestamp": "2023-03-05T00:21:47.149588+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4OTk2MzQ=",
+        "odds": -170,
+        "timestamp": "2023-03-05T01:11:45.204304+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY5MDA0Nzc=",
+        "odds": -175,
+        "timestamp": "2023-03-05T02:21:54.494293+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY5MDEwMTc=",
+        "odds": -180,
+        "timestamp": "2023-03-05T03:41:53.767809+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY5MDE2Njk=",
+        "odds": -185,
+        "timestamp": "2023-03-05T05:41:46.442102+00:00"
+      }
+    ],
+    "T3V0Y29tZU5vZGU6NDAxNTY2NA==": [
+      {
+        "id": "T2Rkc05vZGU6MTY4NDQyOTE=",
+        "odds": -140,
+        "timestamp": "2023-02-20T19:21:21.550417+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4NTA0NDg=",
+        "odds": -150,
+        "timestamp": "2023-02-21T23:00:18.871837+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4NzI3MTM=",
+        "odds": -140,
+        "timestamp": "2023-02-26T17:31:11.875183+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4NzY2Mjg=",
+        "odds": -145,
+        "timestamp": "2023-02-28T17:15:30.416183+00:00"
+      }
+    ],
+    "T3V0Y29tZU5vZGU6NDAxNTY2NQ==": [
+      {
+        "id": "T2Rkc05vZGU6MTY4NDQyOTI=",
+        "odds": 110,
+        "timestamp": "2023-02-20T19:21:21.554789+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4NTA0NDk=",
+        "odds": 120,
+        "timestamp": "2023-02-21T23:00:18.885191+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4NzI3MTQ=",
+        "odds": 110,
+        "timestamp": "2023-02-26T17:31:11.899486+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4NzY2Mjk=",
+        "odds": 115,
+        "timestamp": "2023-02-28T17:15:30.424711+00:00"
+      }
+    ],
+    "T3V0Y29tZU5vZGU6NDAyNDg5Nw==": [
+      {
+        "id": "T2Rkc05vZGU6MTY4NzE0MzU=",
+        "odds": 4500,
+        "timestamp": "2023-02-26T00:18:39.168546+00:00"
+      }
+    ],
+    "T3V0Y29tZU5vZGU6NDAzMTE0Mw==": [
+      {
+        "id": "T2Rkc05vZGU6MTY4OTE0NDM=",
+        "odds": -135,
+        "timestamp": "2023-03-03T22:20:28.233372+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4OTQ3MTc=",
+        "odds": -150,
+        "timestamp": "2023-03-04T14:21:52.098360+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4OTY2MzI=",
+        "odds": -135,
+        "timestamp": "2023-03-04T18:41:11.442753+00:00"
+      }
+    ],
+    "T3V0Y29tZU5vZGU6NDAzMTE0NA==": [
+      {
+        "id": "T2Rkc05vZGU6MTY4OTE0NDQ=",
+        "odds": 100,
+        "timestamp": "2023-03-03T22:20:28.406031+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4OTQ3MTg=",
+        "odds": 110,
+        "timestamp": "2023-03-04T14:21:52.119118+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4OTY2MzM=",
+        "odds": 100,
+        "timestamp": "2023-03-04T18:41:11.455616+00:00"
+      }
+    ],
+    "T3V0Y29tZU5vZGU6NDAzMTE1Ng==": [
+      {
+        "id": "T2Rkc05vZGU6MTY4OTE0NTY=",
+        "odds": 140,
+        "timestamp": "2023-03-03T22:20:32.157533+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4OTQ3MTY=",
+        "odds": 150,
+        "timestamp": "2023-03-04T14:21:52.034177+00:00"
+      }
+    ],
+    "T3V0Y29tZU5vZGU6NDAzMTE1NQ==": [
+      {
+        "id": "T2Rkc05vZGU6MTY4OTE0NTU=",
+        "odds": -190,
+        "timestamp": "2023-03-03T22:20:32.016956+00:00"
+      },
+      {
+        "id": "T2Rkc05vZGU6MTY4OTQ3MTU=",
+        "odds": -200,
+        "timestamp": "2023-03-04T14:21:51.894319+00:00"
+      }
+    ]
+  }
+}
