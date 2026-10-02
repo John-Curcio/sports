@@ -13,10 +13,11 @@ espn_missed_fighters   ufc_round_strikes
 
 class EspnDataCleaner(object):
 
-    def __init__(self):
-        stats_df = base_db_interface.read("espn_stats")
-        bio_df = base_db_interface.read("espn_bio")
-        match_df = base_db_interface.read("espn_matches")
+    def __init__(self, db=None):
+        db = db if db is not None else base_db_interface
+        stats_df = db.read("espn_stats")
+        bio_df = db.read("espn_bio")
+        match_df = db.read("espn_matches")
 
         for df in [stats_df, match_df]:
             df["Date"] = pd.to_datetime(df["Date"])
@@ -91,7 +92,7 @@ class EspnDataCleaner(object):
         # Even if the same match is recorded twice, I'd rather only keep one copy at this point.
         # That way, when we double the data later, we can ensure the flipped rows are 
         # actually equivalent.
-        assert self.clean_match_df["fight_id"].value_counts().max() == 1
+        assert self.clean_match_df.empty or self.clean_match_df["fight_id"].value_counts().max() == 1
         return self.clean_match_df
 
     def _parse_stats(self):
@@ -142,7 +143,7 @@ class EspnDataCleaner(object):
             .reset_index()\
             .drop(columns=["p_stats_zero"])
         # I grouped by [fight_id, FighterID, OpponentID] because 
-        assert self.clean_stats_df["fight_id"].value_counts().max() <= 2
+        assert self.clean_stats_df.empty or self.clean_stats_df["fight_id"].value_counts().max() <= 2
         return self.clean_stats_df
 
     def _get_doubled_matches(self):
@@ -176,7 +177,8 @@ class EspnDataCleaner(object):
         doubled_match_df = self._get_doubled_matches()
         # for each fight, get the Fighter's stats
         right = self.clean_stats_df.drop(
-            columns=["Date", "Event", "OpponentID", "Opponent"]
+            columns=["Date", "Event", "OpponentID", "Opponent", "CompetitionID"],
+            errors="ignore",
         )
         match_stats_df = doubled_match_df.merge(
             right,
@@ -185,7 +187,8 @@ class EspnDataCleaner(object):
         )
         # now, for each fight, get the Opponent's stats
         right = self.clean_stats_df.drop(
-            columns=["Date", "Event", "OpponentID", "Opponent"]
+            columns=["Date", "Event", "OpponentID", "Opponent", "CompetitionID"],
+            errors="ignore",
         ).rename(columns={
             "FighterID": "OpponentID",
         })
@@ -222,4 +225,3 @@ class EspnDataCleaner(object):
         assert (self.espn_df["fight_id"].value_counts() == 2).all()
         assert self.espn_df.shape[0] == doubled_match_df.shape[0]
         return self.espn_df
-
