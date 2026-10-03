@@ -57,23 +57,35 @@ class UfcEventScraper(UfcPageScraper):
     """
     page_kind = 'event'
 
+    def _fight_rows(self, soup):
+        return soup.select('tbody tr.b-fight-details__table-row[data-link]')
+
+    def _selected_rows(self, rows):
+        selected = []
+        for rank, row in enumerate(rows):
+            result = row.find('td').get_text(' ', strip=True)
+            pending = any(text in row.get_text(' ', strip=True).lower()
+                          for text in ('view matchup', 'matchup preview'))
+            if not result and not pending:
+                raise CollectionError(f'{self.url}: bout has neither a result nor a matchup preview')
+            completed = bool(result)
+            if completed == (self.page_kind == 'event'):
+                selected.append((rank, row))
+        return selected
+
     def get_fights(self):
         # Get urls for completed fights (not upcoming fights)
-        soup = self.get_soup()
-        class_str = "b-fight-details__table-row b-fight-details__table-row__hover js-fight-details-click"
-        tags = soup.find_all("tr", {"class": class_str})
-        return [canonical_url(tag['data-link']) for tag in tags]
+        rows = self._selected_rows(self._fight_rows(self.get_soup()))
+        return [canonical_url(row['data-link']) for _, row in rows]
     
     def get_page_urls(self) -> set:
         return set(self.get_fights())
     
     def get_fighter_urls(self):
-        soup = self.get_soup()
         fighter_links = []
-        for link in soup.find_all("a", {"class":"b-link b-link_style_black"}):
-            href = link.get("href")
-            if href is not None and "/fighter-details" in href:
-                fighter_links.append(canonical_url(href))
+        for _, row in self._selected_rows(self._fight_rows(self.get_soup())):
+            fighter_links.extend(canonical_url(link['href'])
+                                 for link in row.select('a[href*="/fighter-details/"]'))
         return fighter_links
     
     def _get_date_location(self):
@@ -86,9 +98,7 @@ class UfcEventScraper(UfcPageScraper):
         return date, loc
     
     def _get_img_pngs(self):
-        soup = self.get_soup()
-        class_str = "b-fight-details__table-row b-fight-details__table-row__hover js-fight-details-click"
-        fights = soup.find_all("tr", {"class": class_str})
+        fights = [row for _, row in self._selected_rows(self._fight_rows(self.get_soup()))]
         img_tags = [fight.find("img") for fight in fights]
         img_pngs = [img.get("src") if img else None for img in img_tags]
         return pd.Series(img_pngs).fillna("")
@@ -100,6 +110,17 @@ class UfcEventScraper(UfcPageScraper):
             if self.page_kind == 'upcoming_event':
                 return pd.DataFrame(columns=EVENT_COLUMNS)
             raise CollectionError(f'{self.url}: completed event has no fights')
+        rows = self._fight_rows(soup)
+        if len(rows) != len(self.data):
+            raise CollectionError(f'{self.url}: event rows and metadata are misaligned')
+        selected = self._selected_rows(rows)
+        self.data = self.data.iloc[[rank for rank, _ in selected]].copy()
+        self.data['fight_rank_on_card'] = self.data.index
+        self.data.reset_index(drop=True, inplace=True)
+        if self.data.empty:
+            return pd.DataFrame(columns=EVENT_COLUMNS)
+        if self.page_kind == 'event' and self.data[['Method', 'Round', 'Time']].isna().any().any():
+            raise CollectionError(f'{self.url}: completed bout has missing result fields')
         date, loc = self._get_date_location()
         self.data["Date"] = date
         self.data["Location"] = loc
@@ -116,7 +137,6 @@ class UfcEventScraper(UfcPageScraper):
         self.data["is_title_fight"] = self.data["img_png_url"].str.endswith("belt.png")
         
         self.data["FightID"] = self.get_fights()
-        self.data["fight_rank_on_card"] = self.data.index # order of fights on the card
         return self.data
 
 
@@ -200,18 +220,22 @@ class UfcFightDetails(UfcPageScraper):
 
     def get_fight_description(self):
         soup = self.get_soup()
-        tags = soup.find_all("div", {"class": "b-fight-details__fight"})
-        desc = tags[0].text.strip().replace("  ", "_").replace("\n", "")
-        d = [field.strip() for field in re.sub("_+", "_", desc).split("_")]
-        return pd.Series({
-            "Weight": d[0],
-            "Method": d[2],
-            "Round": d[4],
-            "Time": d[6],
-            "Time Format": d[8],
-            "Referee": d[10],
-            "Details": " ".join(d[12:]),
-        })
+        fight = soup.select_one('.b-fight-details__fight')
+        normalize = lambda node: ' '.join(node.get_text(' ', strip=True).split())
+        description = {'Weight': normalize(fight.select_one('.b-fight-details__fight-title'))}
+        fields = {'Method:': 'Method', 'Round:': 'Round', 'Time:': 'Time',
+                  'Time format:': 'Time Format', 'Referee:': 'Referee', 'Details:': 'Details'}
+        for label in fight.select('.b-fight-details__label'):
+            name = normalize(label)
+            if name in fields:
+                # Details extends past its label's enclosing <i> into the paragraph.
+                container = label.find_parent('p') if name == 'Details:' else label.parent
+                description[fields[name]] = normalize(container).removeprefix(name).strip()
+        if set(description) != {'Weight', *fields.values()}:
+            raise CollectionError(f'{self.url}: missing labeled fight description fields')
+        if any(not description[field] for field in ('Weight', 'Method', 'Round', 'Time', 'Time Format')):
+            raise CollectionError(f'{self.url}: empty required fight description fields')
+        return pd.Series(description)
 
     def _parse_page_data(self):
         self.fight_description = self.get_fight_description()
@@ -316,6 +340,11 @@ def concatenate(frames, columns):
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=columns)
 
 
+def prefetch_pages(client, urls, kind):
+    if hasattr(client, 'prefetch'):
+        client.prefetch(urls, kind)
+
+
 @contextmanager
 def collection_session(scraper):
     # Public entry points own a browser only when the caller has not supplied one.
@@ -382,6 +411,7 @@ class UfcUrlScraper:
         with collection_session(self) as client:
             if self.fighter_urls is None:
                 self.get_all_fighter_urls()
+            prefetch_pages(client, self.fighter_urls, 'fighter')
             for url in tqdm(sorted(self.fighter_urls)):
                 fighter = UfcFighterScraper(url, client=client)
                 event_urls.update(fighter.get_events())
@@ -405,6 +435,7 @@ class FullUfcScraper:
         self.completed.discard('fights')
         totals, strikes, round_totals, round_strikes, descriptions = [], [], [], [], []
         with collection_session(self) as client:
+            prefetch_pages(client, self.fight_urls, 'fight')
             for url in tqdm(self.fight_urls):
                 fight = UfcFightDetails(url, client=client)
                 fight.get_page_data()
@@ -428,6 +459,7 @@ class FullUfcScraper:
         self.completed.discard('events')
         frames = []
         with collection_session(self) as client:
+            prefetch_pages(client, self.event_urls, 'event')
             for url in tqdm(self.event_urls):
                 frames.append(UfcEventScraper(url, client=client).get_page_data().assign(EventUrl=url))
         self.event_data = concatenate(frames, EVENT_COLUMNS)
@@ -437,6 +469,7 @@ class FullUfcScraper:
     def scrape_fighters(self):
         self.completed.discard('fighters')
         with collection_session(self) as client:
+            prefetch_pages(client, self.fighter_urls, 'fighter')
             rows = [UfcFighterScraper(url, client=client).get_page_data()
                     for url in tqdm(self.fighter_urls)]
         self.fighter_data = pd.DataFrame(rows, columns=FIGHTER_COLUMNS)
@@ -546,10 +579,13 @@ def cli():
     parser.add_argument('--wait-timeout', type=float, default=30)
     parser.add_argument('--retries', type=int, default=2)
     parser.add_argument('--pace', type=float, default=1)
+    parser.add_argument('--workers', type=int, default=1, help='Independent Firefox workers for historical pages')
     parser.add_argument('--firefox-binary')
     parser.add_argument('--geckodriver')
     parser.add_argument('--refresh', action='store_true')
     args = parser.parse_args()
+    if args.workers < 1:
+        parser.error('--workers must be positive')
     if any(value is not None and value <= 0 for value in
            (args.max_fighters, args.max_events, args.max_fights)):
         parser.error('Sample limits must be positive')
@@ -558,10 +594,14 @@ def cli():
     if args.db and Path(args.db).resolve() == Path(args.checkpoint).resolve():
         parser.error('Output database and checkpoint must be separate files')
     try:
-        with FirefoxClient(args.checkpoint, page_timeout=args.page_timeout,
+        client_type, worker_options = FirefoxClient, {}
+        if args.workers > 1:
+            from scrape.ufcstats_parallel import ParallelFirefoxClient
+            client_type, worker_options = ParallelFirefoxClient, {'workers': args.workers}
+        with client_type(args.checkpoint, page_timeout=args.page_timeout,
                            wait_timeout=args.wait_timeout, retries=args.retries, pace=args.pace,
                            firefox_binary=args.firefox_binary, geckodriver=args.geckodriver,
-                           refresh=args.refresh) as client:
+                           refresh=args.refresh, **worker_options) as client:
             if args.mode == 'upcoming':
                 scraper = UpcomingUfcScraper(client=client, max_events=args.max_events)
             else:

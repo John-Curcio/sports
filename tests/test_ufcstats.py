@@ -113,6 +113,70 @@ def test_historical_discovery_excludes_scheduled_matchup():
     assert 'http://ufcstats.com/fight-details/3f804eec9183e597' not in fighter.get_fights()
 
 
+def test_active_card_keeps_finished_bouts_and_preserves_card_positions():
+    url = 'http://ufcstats.com/event-details/ad3fdba28a7540cf'
+    historical = page(UfcEventScraper, url, 'active-event')
+    rows = historical.get_page_data()
+    assert rows['fight_rank_on_card'].tolist() == [10, 11, 12, 13]
+    assert rows['FighterName'].tolist() == [
+        'Jacobe Smith', 'Alexander Hernandez', 'Ismail Naurdiev', 'Eric Nolan']
+    assert rows['OpponentName'].tolist() == [
+        'Bruce Whitehead', 'Rafael Dos Anjos', 'Marvin Vettori', 'Court McGee']
+    assert rows[['Method', 'Round', 'Time']].notna().all().all()
+    assert rows['FightID'].tolist() == historical.get_fights()
+    assert rows['FighterUrl'].tolist() == historical.get_fighter_urls()[::2]
+    assert rows['OpponentUrl'].tolist() == historical.get_fighter_urls()[1::2]
+    assert rows['img_png_url'].tolist() == historical._get_img_pngs().tolist()
+    assert not rows['is_title_fight'].any()  # The pending main event has the belt image.
+    upcoming = page(UpcomingUfcEventScraper, url, 'active-event')
+    pending = upcoming.get_page_data()
+    assert len(pending) == 10 and pending['fight_rank_on_card'].tolist() == list(range(10))
+    assert pending.iloc[0]['FighterName'] == 'Natalia Silva'
+    assert pending.iloc[0]['is_title_fight']
+    assert set(rows['FightID']).isdisjoint(pending['FightID'])
+    scheduled = page(UfcEventScraper, url, 'upcoming-event')
+    assert scheduled.get_page_data().empty and scheduled.get_fights() == []
+    assert scheduled.get_fighter_urls() == []
+
+
+def test_completed_bout_with_missing_result_is_an_error():
+    event = page(UfcEventScraper, EVENT, 'event')
+    soup = event.get_soup()
+    soup.select('tbody tr')[0].find_all('td')[-1].clear()
+    event.raw_html = str(soup)
+    with pytest.raises(CollectionError, match='completed bout has missing result fields'):
+        event.get_page_data()
+
+
+@pytest.mark.parametrize('name,ident,weight,method,round_,time,referee,details', [
+    ('tournament-fight', '828de4f5585c908c', 'Road to UFC 3 Flyweight Tournament Title Bout',
+     'KO/TKO', '1', '2:36', 'Mark Craig', 'Punch to Head At Distance'),
+    ('tournament-decision', '9c207acb12c17a67', 'Road to UFC 3 Bantamweight Tournament Title Bout',
+     'Decision - Unanimous', '3', '5:00', 'Mike Beltran',
+     'Mark Christie 27 - 30. Clemens Werner 27 - 30. David Lethaby 28 - 29.'),
+    ('tournament-kick', 'baee9b2491c986e2', "Road to UFC 3 Women's Strawweight Tournament Title Bout",
+     'KO/TKO', '3', '0:46', 'Kevin Sataki', 'Kick to Head At Distance'),
+])
+def test_labeled_description_handles_spacing_in_tournament_title(
+        name, ident, weight, method, round_, time, referee, details):
+    fight = page(UfcFightDetails, 'http://ufcstats.com/fight-details/' + ident, name)
+    fight.get_page_data()
+    assert fight.fight_description.to_dict() == {
+        'Weight': weight, 'Method': method, 'Round': round_, 'Time': time,
+        'Time Format': '3 Rnd + OT (5-5-5-5)', 'Referee': referee, 'Details': details}
+
+
+def test_missing_description_label_fails_instead_of_shifting_fields():
+    fight = page(UfcFightDetails, FIGHT, 'fight')
+    soup = fight.get_soup()
+    for label in soup.select('.b-fight-details__label'):
+        if label.get_text(strip=True) == 'Time:':
+            label.decompose()
+    fight.raw_html = str(soup)
+    with pytest.raises(CollectionError, match='missing labeled fight description fields'):
+        fight.get_page_data()
+
+
 def test_upcoming_reloads_mutable_cards_and_handles_genuine_empty_cards(tmp_path):
     def handler(url):
         return fixture('upcoming') if url.endswith('/upcoming') else fixture('upcoming-event')
