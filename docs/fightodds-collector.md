@@ -1,79 +1,55 @@
 # FightOdds collector
 
-The collector uses the public, undocumented `https://api.fightodds.io/gql` endpoint. No credentials or browser are needed for the bounded samples verified on October 2, 2026. This is a source collector with isolated storage and an identity adapter; publication into `mma.db`, consumer migration, prop settlement, and backtests belong to separate tickets.
+Collect moneylines, all available props, and timestamped per-book histories from the public, undocumented `https://api.fightodds.io/gql` endpoint. Python 3.9+ and `requests` are required; identity mapping uses existing `pandas`/`numpy` dependencies. No credentials or browser were needed in bounded validation.
 
-## Run
+## Usage
 
-Use Python 3.9+ with `requests`. Identity mapping additionally uses the repository's existing `pandas`/`numpy` dependencies; offline tests use `pytest`. Run from the repository root:
+Run from the repository root with a separate SQLite database:
 
 ```sh
 python -m scrape.scrape_fightodds --db /tmp/fightodds.sqlite collect \
-  --promotion UFC --name 'UFC 285:' --max-events 1 \
-  --fight-slug jon-jones-vs-cyril-gane-43970 \
-  --page-size 50 --pace 1 --max-requests 500 \
-  --report /tmp/fightodds-report.json
+  --promotion UFC --name 'UFC 285:' --fight-slug jon-jones-vs-cyril-gane-43970 \
+  --pace 1 --report /tmp/fightodds-report.json
 python -m scrape.scrape_fightodds --db /tmp/fightodds.sqlite snapshot \
   --event-id 'RXZlbnROb2RlOjQ0NTA=' --output /tmp/fightodds-midnight.json
 python -m pytest -q tests/test_fightodds.py
 ```
 
-`--start`/`--end` apply inclusive source-date filters. `--promotion` matches the source's promotion short name; `--name` is a substring search. Default `--max-events 1` bounds discovery. Without `--fight-slug`, every fight on the selected event is collected, including cancelled records; repeated `--fight-slug` restricts history collection to those fights while retaining the event's discovered identities. Event-level offers are queried even when selecting a fight. Do not infer event-wide price coverage from a run restricted to a single fight.
+`--start`/`--end` filter inclusive source dates; `--promotion` matches the promotion short name. Discovery defaults to one event (`--max-events`). Without `--fight-slug`, all fights on selected events are collected; repeat it to select several fights. Event-linked offers are queried alongside fight offers. See each subcommand's `--help` for options.
 
-The default limits are 100 nodes per page, 100 pages per connection, 1,000 network attempts, 30-second request timeouts, two retries, and half a second between requests. History requests batch up to 20 outcomes, advancing each cursor independently. Rate-limit retries respect numeric `Retry-After` with a 30-second sleep cap, otherwise wait 5/10 seconds. A cap or request failure produces an incomplete report and a nonzero exit status, never a claim of completeness. For large movement series, increase the explicitly bounded page limit. The API enforces a 100-node maximum on discovery connections; page sizes are restricted to 1..100. Use one collector process at a time and `--pace 1` or slower when rate limited.
+Successful pages are cached indefinitely: rerun to resume failed requests, or use `--refresh` to fetch changes, especially for current events. Refresh retains existing histories and archived corrections. Reports distinguish complete, empty/unavailable, and failed histories; failures exit nonzero. Defaults bound collection to 100 nodes/page, 100 pages/connection, and 1,000 network attempts, with 30-second timeouts and two retries. Increase `--max-pages` for large histories. Use one process and `--pace 1` or slower if rate limited. The CLI refuses output databases named `mma.db`.
 
-Successful response pages are durably cached by endpoint, exact query, and variables. Repeating the command resumes from those pages and retries failures. Cache entries have no automatic expiry: use `--refresh` to fetch updated discovery, offers, and histories, especially for current events. Refresh caches successful requests within that invocation, archives raw responses, and preserves earlier observations. Failed responses are never substituted with old cached successes during refresh. A run report distinguishes completed history, unavailable (successfully queried but empty) history, and failed requests. Zero available props is a coverage gap, not an API error. Collection failures do not prevent histories for offers already discovered from being validated.
+## Historical prices
 
-The CLI refuses any output DB named `mma.db`; use a dedicated path. It does not import the legacy database singleton or orchestration scripts.
+Default cutoff is midnight `America/New_York` on the advertised event date, including DST: Friday into Saturday for a Saturday date. Source date timezone semantics and historical `startTime` values are unverified, so this fallback exposes `timing_uncertain: true`. `--trust-start-time` derives the Eastern day from a separately verified start; `--cutoff` accepts an explicit offset-bearing instant. `--hour` changes the Eastern hour; nonexistent DST hours are rejected and repeated hours use their earliest occurrence. A cutoff at/after source start is flagged `possible_after_start`.
 
-## Source queries and completeness
+Each outcome selects its latest observation at or before the cutoff and retains its timestamp, quote age, and provenance. Later quotes cannot influence the result. Missing earlier observations, null prices, same-time conflicts, and cancelled/hypothetical records remain explicit. Incomplete or retained archive histories produce candidate states. `--stale-seconds` optionally flags old quotes; there is no default age limit.
 
-Dynamic values use GraphQL variables. The query constants and builders are in `scrape/scrape_fightodds.py`.
+Historical transaction availability and in-play status remain unknown. Current offer status/disabled flags cannot establish past availability. These snapshots are not closing odds; no regular sampling or availability through gaps is inferred.
 
-- `allEvents(first, after, promotion_ShortName, date_Gte, date_Lte, name_Icontains, orderBy: "date")` returns source IDs, slugs, date, startTime, cancellation and temporary-record flags.
-- `allFights(event, first, after)` discovers fighters, original names, fighter URLs, orientation, fight type, and cancellations.
-- `allOffers(fight, first, after)` collects every offer type rather than a prop allowlist. `allOffers(event, first, after)` collects event-linked offers. Each offer retains its ID, sportsbook ID, type metadata, exact source values/lines, timestamps, current disabled/status fields, and original outcomes. `STRAIGHT` fight offers are reported as moneyline; all others, including unclassified offers, appear in prop coverage.
-- `fightPropOfferTable(slug).propOffers(first, after)` collects every displayed group and its exact `propName1`/`propName2` labels and type metadata. The report compares the discovered type IDs with collected offer types. These labels accompany the underlying offers; they are not a replacement for outcome names or offer identity. The UI table groups fewer markets than `allOffers` because some underlying props have no type metadata.
-- `allOdds(outcome, first, after, orderBy: "timestamp")` returns source price IDs, nullable American odds, and timezone-aware timestamps. No observations are synthesized from current/open/best/worst summaries.
+## Storage and integration
 
-Every paginated connection checks `pageInfo`; repeated cursors, malformed edges, missing paths, and exhausted page limits are errors. Nested `Offer.outcomes` advertises pagination in introspection but the live resolver rejects `first` (unexpected keyword argument). Its unparameterized connection returned `hasNextPage: false` in all validated offers. The collector checks this for every offer and reports failure if it ever becomes truncated; it cannot promise to retrieve a truncated list from that broken resolver. Offer and group discovery use separate paginated root/table connections to avoid unverified nested display-offer pagination.
+Queries and the schema live in [scrape_fightodds.py](../scrape/scrape_fightodds.py). Collection paginates `allEvents`, `allFights`, `allOffers`, `fightPropOfferTable.propOffers`, and `allOdds`. Nested `Offer.outcomes` rejects pagination arguments despite advertising them; its lists were complete in validation, and truncated lists are reported as failures. Moneylines use `STRAIGHT`; every other offer is retained in prop coverage, including unknown types. Original labels, lines, source IDs, and duplicate book offers stay distinct.
 
-`eventOfferTable` exposes fight offers, with no dedicated event prop table in the inspected schema. The generic event-filtered offer query supports event-level collection; all three validated events returned zero event-linked offers. This establishes an observed gap, not that event-level props can never exist.
+SQLite tables use a `fightodds_` prefix:
 
-## Storage and downstream contract
+- `records`: current event/fight/fighter/book/market/offer/outcome/group JSON keyed by `(kind, id)`. Joins follow fight → `event_id`, offer → `market_id`/source fight/book, and outcome → `offer_id`. Market lines use offer `value`, otherwise offer-type `value`; unknown types retain offer-specific identities.
+- `prices`: source price ID, outcome ID, UTC timestamp, nullable American odds, and raw response ID. Distinct IDs at equal timestamps remain separate; corrections update the current record.
+- `record_versions`, `price_versions`, `responses`: changed records and full successful responses, including queries, variables, and fetch times. Refresh never deletes observations solely because they disappeared from a response.
+- `history_status`, `runs`, `identity_maps`: coverage checks, run reports, and explicit cross-source mappings.
 
-SQLite tables use a `fightodds_` prefix. `fightodds_records` contains one current JSON record per `(kind, id)` for `event`, `fight`, `fighter`, `sportsbook`, `market`, `offer`, `outcome`, and `prop_group`. The source-specific IDs are never written into BFO fields. This deliberately keeps flexible source metadata alongside explicit normalized keys rather than imposing a prop settlement taxonomy.
-
-| Record | Join keys and retained data |
-| --- | --- |
-| Event | Relay `id`, integer `pk`, slug, source date/startTime, promotion, cancellation/temp |
-| Fight | Relay `id`, slug, `event_id`, original fighter1/fighter2 metadata |
-| Market | Deterministic ID over context, source offer type ID and offer value; `offer_type_id`, `event_id`, nullable `fight_id`, `market_kind`, exact description/notDescription, line and line basis |
-| Offer | Source ID, `event_id`, source fight link, `market_id`, sportsbook metadata, source value, current status/disabled/timestamps |
-| Outcome | Source ID, `offer_id`, exact name, nullable explicit fighter ID, `isNot`, nullable last/open/extrema summaries |
-| Prop group | Context and source-label digest ID, `fight_id`, exact two display labels, full offer type metadata |
-
-When a type is missing, the market identity includes the original offer ID, labels remain on the outcomes, and type metadata is explicitly unknown. A line comes from offer `value` when supplied, otherwise offer-type `value`; neither is parsed from the label. Different offers/outcomes sharing a sportsbook name remain separate, including archived duplicates and one-sided markets.
-
-`fightodds_prices` stores one current observation per source price ID with outcome ID, UTC microsecond timestamp, nullable original American odds, and raw response ID. Distinct IDs at the same timestamp remain distinct. A correction to an existing source ID updates its normalized record; previous versions remain in `fightodds_price_versions`. `fightodds_record_versions` similarly retains changed dates, identities, labels, and statuses. Observations absent from a refresh are retained as archive data; absence alone does not prove deletion or suspension. `fightodds_responses` preserves query, variables, full successful response, fetch time, and ingestion provenance. `fightodds_history_status` stores the last complete/unavailable/failed check per outcome; `fightodds_runs` stores per-run reports.
-
-`wrangle.fightodds_data.identity_frame(store)` provides source fighter/opponent identities, names, calendar dates and explicit FightOdds event/fight IDs in the shape accepted by the existing matcher. `map_identities(store, canonical_dataframe, 'espn' | 'ufcstats', day_tol=0, name_overrides=None)` writes explicit fighter mappings and uniquely verified pair/date event/fight mappings into the isolated `fightodds_identity_maps` table. For the legacy ESPN shape, event targets retain the event name together with its source date because that table has no canonical event ID. Canonical rows are supplied by the caller; the adapter never reads `mma.db`. The existing matcher lives in `wrangle.identity_matching`, with compatibility imports in `join_datasets`; the algorithm is unchanged.
-
-The bounded Jones–Gane identity fixture was copied from the existing ESPN/UFCstats tables using SQLite read-only mode. FightOdds fighter metadata spells Gane `Cyril Gané`, while its moneyline outcome says `Ciryl Gane`, matching both canonical sources. The validation supplies this specific name override explicitly and records it as mapping evidence. No global fuzzy rename or sportsbook aggregation is imposed. Unmapped and ambiguous identities remain for downstream resolution.
-
-## Historical lookup
-
-Default cutoff is `00:00 America/New_York` on the source event date, with DST. This is midnight Friday into Saturday for a Saturday source date. It is recorded as `source_date_assumed_eastern_day` with `timing_uncertain: true`: source date timezone semantics are undocumented. For UFC 285 it is March 4, 2023, 05:00 UTC.
-
-The API exposes offset-bearing `startTime`, but historical UFC 284/285 both return `08:00 UTC` on their advertised dates, and the current sample returns midnight UTC. These values have not been verified as actual event start times. Consequently, the default does not treat them as verified. `--trust-start-time` is an explicit opt-in after verifying a start time: it derives the Eastern calendar day from that instant, including overseas day shifts. `--hour 0..23` selects a different Eastern hour (the earliest occurrence for a repeated fall-back hour; nonexistent spring-forward hours are rejected); `--cutoff` supplies an explicit offset-bearing instant. Missing event dates produce missing cutoffs. A supplied source start at/before a chosen cutoff is flagged as `possible_after_start`, including with the date fallback.
-
-For each stored outcome/offer, the lookup selects the newest observation at or before the cutoff. Later points cannot change the result. A null newest observation stays null rather than resurrecting an older price; conflicting distinct observations at the same newest timestamp produce an explicit conflict. Cancelled events/fights and temporary events have no selected price. Histories that failed or were not checked produce `candidate_from_incomplete_history` rather than a confirmed selection. Retained archive points after an empty refresh are labelled `candidate_from_archived_history`. Old quotes remain selectable without an arbitrary age threshold; `--stale-seconds` optionally flags age.
-
-Each snapshot row retains market, line, labels, offer/book/outcome identities, explicit fighter association, cutoff policy/basis, original source date/start, observation timestamp, quote age, missingness/selection state, history state, raw response ID, current offer status/disabled, and `availability_at_cutoff: unknown`. Current flags are not historical availability evidence. Downstream joins must retain these keys and uncertainty; snapshots must not be labelled closing odds or pooled across books/markets without a separate policy.
-
-Timestamp documentation and historical suspension transitions are unavailable. Observations extend beyond source startTime, so excluding in-play prices cannot be established from the field alone. Treat timestamp as a source-recorded observation instant, with ingestion time retained separately. Price movement spacing is irregular; no forward-filled transaction availability or regularly sampled time series is claimed. Full raw history permits later cutoff policies and analyses.
+[The identity adapter](../wrangle/fightodds_data.py) accepts caller-supplied canonical rows and reuses the existing matcher without opening the legacy database. Snapshots retain source IDs, book/market/outcome identity, labels/lines, cutoff basis, source dates, quote age, coverage state, and provenance; downstream joins must preserve them. Pipeline publication, consumer migration, prop settlement, and backtests remain separate work.
 
 ## Validation
 
-The accompanying `fightodds-validation.json` records bounded live coverage. Offline fixtures preserve the actual 37-point DraftKings Jones series, original labels/lines and identities, and a small sample of prop histories. Tests exercise multiple pages, HTTP/GraphQL failures, request/page budgets, resume, refresh, duplicate book/offer identity, null/missing odds, cancellations, reschedules, same-time conflicts, Eastern DST, overseas date conversion, future-price exclusion, prop failures with usable moneylines, and isolated canonical joins. Existing ESPN tests also verify the matcher extraction preserves its consumers.
+Bounded live collection on October 2, 2026 completed every selected connection, with no remaining request failures after resume. Counts include retained source duplicates; each row represents one selected fight, not event-wide coverage.
 
-Sustained crawling reliability, global historical coverage, reliable event start times, and historical quote availability remain unverified. No full historical crawl or pipeline publication was performed.
+| Sample | Moneyline outcomes / observations | Prop outcomes / observations | Display groups |
+| --- | --- | --- | --- |
+| UFC 285: Jones–Gane | 34 / 2,070 | 466 / 1,949 | 97 |
+| UFC 284: Makhachev–Volkanovski | 36 / 12,324 | 427 / 2,025 | 67 |
+| Currently listed Silva–Wang, event 9743 | 58 / 1,325 | 1,086 / 9,018 | 154 |
+
+DraftKings Jones reproduced the researched 37-point series; midnight March 4 selected Jones −175 and Gane +150, with quotes about 5.8 hours old. All display groups had corresponding offer types. Event-linked offers were empty for all three samples. Rate-limited requests resumed successfully; two UFC 284 histories needed a larger page cap.
+
+Offline [tests and fixtures](../tests/test_fightodds.py) cover pagination, errors, duplicate offers, resume/refresh, missing/null histories, corrections, cancellations, DST, future-price exclusion, and isolated ESPN/UFCstats mappings. Jones–Gane mapped two fighters, one fight, and one event per source without changing snapshots. Validation explicitly recorded `Cyril Gané` → `Ciryl Gane`, matching the source moneyline label and canonical names; legacy ESPN event targets use name plus date. Global coverage and sustained crawling reliability remain unverified. The full implementation ticket is [DAN-8](https://linear.app/danaher/issue/DAN-8/implement-a-fightodds-graphql-scraper).
