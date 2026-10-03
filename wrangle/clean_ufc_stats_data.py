@@ -1,20 +1,25 @@
 import numpy as np
 import pandas as pd
-from db import base_db_interface
 
 
 class UfcDataCleaner(object):
     # I still havent' figured out what to do with round stats!
 
-    def __init__(self):
-        self.totals_df = base_db_interface.read("ufc_totals")
-        self.strikes_df = base_db_interface.read("ufc_strikes")
-        self.events_df = base_db_interface.read("ufc_events")
-        self.desc_df = base_db_interface.read("ufc_fight_description")
-        self.upcoming_fights_df = base_db_interface.read("ufc_upcoming_fights")
+    def __init__(self, db=None):
+        if db is None:
+            from db import base_db_interface
+            db = base_db_interface
+        self.totals_df = db.read("ufc_totals")
+        self.strikes_df = db.read("ufc_strikes")
+        self.events_df = db.read("ufc_events")
+        self.desc_df = db.read("ufc_fight_description")
+        self.upcoming_fights_df = db.read("ufc_upcoming_fights")
 
-        assert self.desc_df.shape[0] == self.totals_df["FightID"].nunique()
-        assert self.desc_df.shape[0] == self.strikes_df["FightID"].nunique()
+        # Descriptions survive genuine missing-statistics notices. All statistics
+        # must still refer to described fights, with matching totals/strike coverage.
+        assert self.desc_df["FightID"].is_unique
+        assert set(self.totals_df["FightID"]) <= set(self.desc_df["FightID"])
+        assert set(self.strikes_df["FightID"]) == set(self.totals_df["FightID"])
         # ufc_events may include events for which no round-by-round stats were recorded
         assert self.events_df["FightID"].nunique() >= self.totals_df["FightID"].nunique()
 
@@ -272,6 +277,5 @@ class UfcDataCleaner(object):
         ufc_df["Date"] = pd.to_datetime(ufc_df["Date"])
         self.ufc_df = ufc_df
         return self.ufc_df
-
 
 

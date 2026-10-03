@@ -2,6 +2,9 @@
 
 This is Curcio's MMA picks project
 
+For local Firefox UFCstats collection, bounded validation, and resumable crawls,
+see [the UFCstats collector guide](docs/ufcstats-collector.md).
+
 ## Jupyter Notebooks
 
 Notebooks are organized into nested folders. To run them, add the following code snippet before importing any modules:

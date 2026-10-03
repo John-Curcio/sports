@@ -12,7 +12,6 @@ import requests
 from io import StringIO 
 from lxml import html
 
-import boto3
 import time
 
 headers = {
@@ -20,17 +19,6 @@ headers = {
     (KHTML, like Gecko) Chrome/46.0.2490.80 Safari/537.36',
     'Content-Type': 'text/html',
 }
-
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver import FirefoxOptions
-
-opts = FirefoxOptions()
-opts.add_argument("--headless")
-driver = webdriver.Firefox(options=opts)
-
 
 class EmptyResponse(Exception):
     pass
@@ -49,8 +37,6 @@ class BasePageScraper(ABC):
         self.data = None
         
     def get_request(self):
-        # driver.get(self.url)
-        # return driver.page_source
         for i in range(self.max_tries):
             r = requests.get(self.url, headers=headers)
             r.close()
@@ -135,4 +121,3 @@ class BaseBfs(ABC):
                 curr_depth += 1
                 curr_width = frontier.qsize()
         return self.urls_seen
-

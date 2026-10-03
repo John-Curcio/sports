@@ -1,0 +1,2 @@
+# Preserve the site's HTML whitespace for parser regression fixtures.
+*.html -whitespace
